@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+
+{% block title %}Select Strategy{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12 text-center">
+        <h1 class="display-5 fw-bold">Select Your Investment Strategy</h1>
+        <p class="fs-4 text-muted">Choose the risk profile that matches your financial goals.</p>
+    </div>
+</div>
+
+<div class="row row-cols-1 row-cols-md-3 g-4">
+    <!-- Conservative -->
+    <div class="col">
+        <div class="card h-100 shadow-sm border-success">
+            <div class="card-header bg-success text-white text-center py-3">
+                <h3 class="my-0 fw-normal">Conservative</h3>
+            </div>
+            <div class="card-body d-flex flex-column">
+                <h5 class="card-title text-center text-success mb-3">Safe & Steady</h5>
+                <p class="card-text">Best for preserving capital while generating income. Focuses on established
+                    companies with high dividends and low volatility.</p>
+                <ul class="list-unstyled mt-3 mb-4 flex-grow-1">
+                    <li><i class="bi bi-check-circle-fill text-success"></i> Market Cap: Large (> $10B)</li>
+                    <li><i class="bi bi-check-circle-fill text-success"></i> Dividend Yield: High (> 5%)</li>
+                    <li><i class="bi bi-check-circle-fill text-success"></i> Volatility: Low (Beta < 1)</li>
+                    <li><i class="bi bi-check-circle-fill text-success"></i> Value Focus (P/E < 25)</li>
+                </ul>
+                <a href="{% url 'run-analysis' %}?type=conservative"
+                    class="btn btn-outline-success btn-lg w-100 mt-auto">Select Conservative</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Balanced -->
+    <div class="col">
+        <div class="card h-100 shadow-sm border-primary">
+            <div class="card-header bg-primary text-white text-center py-3">
+                <h3 class="my-0 fw-normal">Balanced</h3>
+            </div>
+            <div class="card-body d-flex flex-column">
+                <h5 class="card-title text-center text-primary mb-3">Growth & Stability</h5>
+                <p class="card-text">A mix of growth and stability. Standard "SmartVest" strategy balancing potential
+                    returns with moderate risk.</p>
+                <ul class="list-unstyled mt-3 mb-4 flex-grow-1">
+                    <li><i class="bi bi-check-circle-fill text-primary"></i> Market Cap: Large (> $10B)</li>
+                    <li><i class="bi bi-check-circle-fill text-primary"></i> Positive Dividends</li>
+                    <li><i class="bi bi-check-circle-fill text-primary"></i> Strong Fundamentals</li>
+                    <li><i class="bi bi-check-circle-fill text-primary"></i> Technical Confirmation</li>
+                </ul>
+                <a href="{% url 'run-analysis' %}?type=balanced"
+                    class="btn btn-outline-primary btn-lg w-100 mt-auto">Select Balanced</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Aggressive -->
+    <div class="col">
+        <div class="card h-100 shadow-sm border-danger">
+            <div class="card-header bg-danger text-white text-center py-3">
+                <h3 class="my-0 fw-normal">Aggressive</h3>
+            </div>
+            <div class="card-body d-flex flex-column">
+                <h5 class="card-title text-center text-danger mb-3">High Growth</h5>
+                <p class="card-text">Maximum growth potential for those willing to accept higher volatility. Targets
+                    smaller, fast-growing companies.</p>
+                <ul class="list-unstyled mt-3 mb-4 flex-grow-1">
+                    <li><i class="bi bi-check-circle-fill text-danger"></i> Market Cap: Mid/Large (> $2B)</li>
+                    <li><i class="bi bi-check-circle-fill text-danger"></i> High Growth (EPS > 20%)</li>
+                    <li><i class="bi bi-check-circle-fill text-danger"></i> Higher Volatility Accepted</li>
+                    <li><i class="bi bi-check-circle-fill text-danger"></i> Dividends Not Required</li>
+                </ul>
+                <a href="{% url 'run-analysis' %}?type=aggressive"
+                    class="btn btn-outline-danger btn-lg w-100 mt-auto">Select Aggressive</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

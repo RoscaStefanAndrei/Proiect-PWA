@@ -1,0 +1,93 @@
+{% extends 'base.html' %}
+
+{% block title %}Admin Dashboard{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Admin Dashboard</h2>
+        <span class="badge bg-danger">Superuser Access</span>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="row mb-4">
+        <div class="col-md-6 mb-3">
+            <div class="card text-white bg-primary h-100 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title">Total Users</h5>
+                    <div class="display-4 fw-bold">{{ total_users }}</div>
+                    <p class="card-text">Registered accounts</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 mb-3">
+            <div class="card text-white bg-success h-100 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title">Total Portfolios</h5>
+                    <div class="display-4 fw-bold">{{ total_portfolios }}</div>
+                    <p class="card-text">Saved across all users</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Management Table -->
+    <div class="card shadow-sm">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">Client List</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th>Profiles</th>
+                            <th>Portfolios</th>
+                            <th>Joined Date</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in user_data %}
+                        <tr>
+                            <td>
+                                <div class="d-flex align-items-center">
+                                    {% if item.user.userprofile.avatar %}
+                                    <img src="{{ item.user.userprofile.avatar.url }}" class="rounded-circle me-2"
+                                        width="30" height="30">
+                                    {% else %}
+                                    <div class="rounded-circle bg-secondary d-flex justify-content-center align-items-center me-2 text-white"
+                                        style="width: 30px; height: 30px;">
+                                        {{ item.user.username|first|upper }}
+                                    </div>
+                                    {% endif %}
+                                    <strong>{{ item.user.username }}</strong>
+                                    {% if item.user.is_superuser %}
+                                    <span class="badge bg-danger ms-2" style="font-size: 0.6rem;">ADMIN</span>
+                                    {% endif %}
+                                </div>
+                            </td>
+                            <td>{{ item.user.email }}</td>
+                            <td>
+                                <!-- Placeholder for potential multiple profiles logic -->
+                                <span class="badge bg-info text-dark">Balanced</span>
+                            </td>
+                            <td>
+                                <span class="badge bg-secondary">{{ item.portfolio_count }}</span>
+                            </td>
+                            <td>{{ item.user.date_joined|date:"M d, Y" }}</td>
+                            <td>
+                                <a href="{% url 'admin-user-detail' item.user.id %}"
+                                    class="btn btn-sm btn-outline-primary" title="View Details">View</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

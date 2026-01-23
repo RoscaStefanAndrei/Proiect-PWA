@@ -1,0 +1,36 @@
+body {
+    background: url('../img/background.jpg') no-repeat center center fixed;
+    background-size: cover;
+    min-height: 100vh;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.navbar {
+    background: #000000 !important;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.card {
+    border: none;
+    border-radius: 12px;
+    transition: transform 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+}
+
+.btn-primary {
+    background-color: #1a2980;
+    border-color: #1a2980;
+}
+
+.btn-primary:hover {
+    background-color: #131e60;
+    border-color: #131e60;
+}
+
+.spinner-border {
+    width: 3rem;
+    height: 3rem;
+}

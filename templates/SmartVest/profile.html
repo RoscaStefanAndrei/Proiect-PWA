@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+
+{% block title %}My Profile{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-4">
+        <div class="card text-center shadow-sm">
+            <div class="card-body">
+                {% if user.userprofile.avatar %}
+                <img src="{{ user.userprofile.avatar.url }}" class="rounded-circle img-thumbnail mb-3"
+                    style="width: 150px; height: 150px; object-fit: cover;">
+                {% endif %}
+                <h4>{{ user.username }}</h4>
+                <p class="text-muted">{{ user.email }}</p>
+                <p>{{ user.userprofile.bio }}</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                Update Profile Info
+            </div>
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    {{ p_form.as_p }}
+                    <button class="btn btn-success" type="submit">Update Profile</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

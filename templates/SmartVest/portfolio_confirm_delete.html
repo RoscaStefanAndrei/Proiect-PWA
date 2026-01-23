@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+
+{% block title %}Delete{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card border-danger shadow-sm">
+            <div class="card-header bg-danger text-white">
+                <h3 class="mb-0">Confirm Delete</h3>
+            </div>
+            <div class="card-body">
+                <h5 class="card-title">Are you sure you want to delete the portfolio "{{ object.name }}"?</h5>
+                <p class="card-text">This action cannot be undone.</p>
+                <form method="POST">
+                    {% csrf_token %}
+                    <div class="text-end">
+                        <a href="{% url 'portfolio-list' %}" class="btn btn-secondary">Cancel</a>
+                        <button type="submit" class="btn btn-danger">Confirm Delete</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

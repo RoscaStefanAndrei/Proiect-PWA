@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+
+{% block title %}Results{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Portfolio Recommendation</h1>
+
+{% if has_results %}
+<div class="card shadow mb-4">
+    <div class="card-header py-3 bg-success text-white">
+        <h5 class="m-0 font-weight-bold">Optimized Allocation (GMV)</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped" id="dataTable" width="100%" cellspacing="0">
+                <thead>
+                    <tr>
+                        <th>Ticker</th>
+                        <th>Weight</th>
+                        <th>Price</th>
+                        <th>Investment Value ($)</th>
+                        <th>Shares</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in results %}
+                    <tr>
+                        <td><strong>{{ row.Ticker }}</strong></td>
+                        <td>{{ row.Pondere }}</td>
+                        <td>{{ row.Price }}</td>
+                        <td>{{ row.Valoare_Investitie_USD }}</td>
+                        <td>{{ row.Nr_Actiuni }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="alert alert-info mt-3">
+            <strong>Total Budget:</strong> $10,000 (Simulated)<br>
+            Based on Modern Portfolio Theory (Global Minimum Variance).
+        </div>
+    </div>
+</div>
+
+<div class="card shadow mb-4">
+    <div class="card-header py-3 bg-secondary text-white">
+        <h5 class="m-0 font-weight-bold">Save this Portfolio</h5>
+    </div>
+    <div class="card-body">
+        <form action="{% url 'save-portfolio' %}" method="POST">
+            {% csrf_token %}
+            <div class="mb-3">
+                <label for="portfolioName" class="form-label">Portfolio Name</label>
+                <input type="text" class="form-control" id="portfolioName" name="portfolio_name" required
+                    placeholder="e.g., Aggressive Growth Q1">
+            </div>
+            <div class="mb-3">
+                <label for="portfolioDesc" class="form-label">Description (Optional)</label>
+                <textarea class="form-control" id="portfolioDesc" name="portfolio_description" rows="2"></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">Save Portfolio</button>
+        </form>
+    </div>
+</div>
+
+{% else %}
+<div class="alert alert-warning" role="alert">
+    <h4 class="alert-heading">No Results Found!</h4>
+    <p>It seems you haven't run the analysis yet, or the last run produced no results.</p>
+    <hr>
+    <p class="mb-0">Click below to start the screening process.</p>
+    <br>
+    <a href="{% url 'run-analysis' %}" class="btn btn-success">Run Analysis</a>
+</div>
+{% endif %}
+{% endblock %}

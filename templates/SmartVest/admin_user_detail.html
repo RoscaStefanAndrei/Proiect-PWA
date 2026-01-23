@@ -1,0 +1,91 @@
+{% extends 'base.html' %}
+
+{% block title %}User Detail - {{ target_user.username }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>User Profile: {{ target_user.username }}</h2>
+        <a href="{% url 'admin-dashboard' %}" class="btn btn-outline-secondary">Back to Admin Panel</a>
+    </div>
+
+    <!-- User Profile Info -->
+    <div class="card shadow-sm mb-5">
+        <div class="card-body">
+            <div class="row align-items-center">
+                <div class="col-md-2 text-center">
+                    {% if target_user.userprofile.avatar %}
+                    <img src="{{ target_user.userprofile.avatar.url }}" class="rounded-circle img-fluid"
+                        style="max-width: 120px; max-height: 120px;">
+                    {% else %}
+                    <div class="rounded-circle bg-secondary d-flex justify-content-center align-items-center mx-auto text-white display-4"
+                        style="width: 120px; height: 120px;">
+                        {{ target_user.username|first|upper }}
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="col-md-10">
+                    <h4 class="mb-1">{{ target_user.first_name }} {{ target_user.last_name }}</h4>
+                    <p class="text-muted mb-2">@{{ target_user.username }} | Joined: {{ target_user.date_joined|date:"M
+                        d, Y" }}</p>
+                    <p class="mb-0"><strong>Bio:</strong> {{ target_user.userprofile.bio|default:"No bio provided." }}
+                    </p>
+                    <p class="mb-0"><strong>Email:</strong> <a href="mailto:{{ target_user.email }}">{{
+                            target_user.email }}</a></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Portfolio Performance -->
+    <h3 class="mb-4">User Portfolios</h3>
+    {% if performance_data %}
+    <div class="row">
+        {% for data in performance_data %}
+        <div class="col-md-6 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">{{ data.portfolio.name }}</h5>
+                    <small>{{ data.portfolio.created_at|date:"M d, Y" }}</small>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center mb-3">
+                        <div class="col-6">
+                            <small class="text-muted d-block uppercase">Initial Investment</small>
+                            <span class="h5">${{ data.initial_value|floatformat:2 }}</span>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted d-block uppercase">Current Value</small>
+                            <span class="h5 fw-bold">${{ data.current_value|floatformat:2 }}</span>
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <div class="row text-center">
+                        <div class="col-6">
+                            <small class="text-muted d-block uppercase">Profit / Loss</small>
+                            <span class="h4 {% if data.profit_loss >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                {% if data.profit_loss >= 0 %}+{% endif %}${{ data.profit_loss|floatformat:2 }}
+                            </span>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted d-block uppercase">Return</small>
+                            <span class="h4 {% if data.return_pct >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                {% if data.return_pct >= 0 %}+{% endif %}{{ data.return_pct|floatformat:2 }}%
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="alert alert-info">
+        This user has no saved portfolios.
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

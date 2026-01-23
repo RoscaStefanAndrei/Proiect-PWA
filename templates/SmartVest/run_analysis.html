@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+
+{% block title %}Run Analysis{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8 text-center">
+        <div class="card shadow">
+            <div class="card-body p-5">
+                <h2 class="card-title">Stock Selection Algorithm</h2>
+                <p class="card-text lead">
+                    Run the advanced screening algorithm to identify high-potential stocks and generate an optimized
+                    portfolio.
+                </p>
+                <div class="alert alert-warning">
+                    <strong>Note:</strong> The process involves fetching data for thousands of tickers and may take
+                    <strong>6-7 minutes</strong> to complete.
+                </div>
+
+                {% if running %}
+                <a href="{% url 'analysis-status' %}" class="btn btn-warning btn-lg">View Progress</a>
+                {% else %}
+                <form method="POST">
+                    {% csrf_token %}
+                    <input type="hidden" name="portfolio_type" value="{{ initial_type }}">
+
+                    <div class="mb-4 text-start">
+                        <label for="investment_amount" class="form-label fw-bold">Investment Budget ($)</label>
+                        <input type="number" class="form-control form-control-lg" id="investment_amount"
+                            name="investment_amount" value="10000" min="1000" step="100" required>
+                        <div class="form-text">Adjust the total amount you wish to allocate across the selected
+                            portfolio.</div>
+                    </div>
+
+                    <div class="alert alert-info d-flex align-items-center mb-4">
+                        <i class="bi bi-info-circle-fill me-2 fs-4"></i>
+                        <div>
+                            Selected Strategy: <span class="fw-bold text-uppercase">{{ initial_type }}</span>
+                        </div>
+                    </div>
+
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-success btn-lg">Start Analysis</button>
+                    </div>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

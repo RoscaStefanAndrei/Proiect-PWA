@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+
+{% block title %}Home{% endblock %}
+
+{% block content %}
+<div class="px-4 py-3 my-4 text-center text-white">
+    <h1 class="display-5 fw-bold">Welcome to SmartVest</h1>
+    <div class="col-lg-6 mx-auto">
+        <p class="lead mb-4">Your personal assistant for stock selection and portfolio management based on advanced
+            algorithmic screening.</p>
+    </div>
+</div>
+
+<div class="row align-items-md-stretch mt-5 pt-4">
+    <div class="col-md-4 mb-4 mb-md-0">
+        <div class="h-100 p-5 bg-light border rounded-3">
+            <h2>My Activity</h2>
+            {% if user.is_authenticated %}
+            <div class="d-grid gap-2 mt-4">
+                <a href="{% url 'select-portfolio-type' %}" class="btn btn-primary" type="button">Change Filters</a>
+                <a href="{% url 'portfolio-list' %}" class="btn btn-outline-secondary" type="button">My Portfolios</a>
+            </div>
+            {% else %}
+            <div class="d-grid gap-2 mt-4">
+                <a href="{% url 'register' %}" class="btn btn-primary" type="button">Get Started</a>
+                <a href="{% url 'login' %}" class="btn btn-outline-primary" type="button">Login</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    <div class="col-md-4 mb-4 mb-md-0">
+        <div class="h-100 p-5 text-white bg-dark rounded-3">
+            <h2>Track Portfolios</h2>
+            <p>Monitor your saved portfolios in real-time. Calculate your total profit/loss based on live market data
+                linked to your initial investment.</p>
+            <a href="{% url 'track-performance' %}" class="btn btn-outline-light" type="button">Check Performance</a>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="h-100 p-5 bg-light border rounded-3">
+            <h2>Market News</h2>
+            <p>Stay updated with the latest financial headlines directly from the market. Real-time updates via Google
+                News.</p>
+            <a href="{% url 'market-news' %}" class="btn btn-outline-dark" type="button">Read News</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
