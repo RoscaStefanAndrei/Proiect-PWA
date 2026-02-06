@@ -1,48 +1,130 @@
 {% extends 'base.html' %}
+{% block title %}Acasa{% endblock %}
 
-{% block title %}Home{% endblock %}
+{% block header_title %}Meniu principal{% endblock %}
 
 {% block content %}
-<div class="px-4 py-3 my-4 text-center text-white">
-    <h1 class="display-5 fw-bold">Welcome to SmartVest</h1>
-    <div class="col-lg-6 mx-auto">
-        <p class="lead mb-4">Your personal assistant for stock selection and portfolio management based on advanced
-            algorithmic screening.</p>
+<!-- Dashboard Header Section -->
+<div class="row mb-5">
+    <div class="col-12">
+        <div class="d-flex align-items-baseline">
+            <h1 class="display-4 fw-bold text-white me-3 mb-0">{{ total_balance|floatformat:2 }} $</h1>
+            <span class="text-muted fs-5"><i class="fas fa-chevron-down"></i></span>
+        </div>
+
+        <div class="d-flex align-items-center mt-2 mb-4">
+            <div
+                class="badge bg-secondary bg-opacity-25 text-white px-2 py-1 me-3 rounded-pill d-flex align-items-center border border-secondary">
+                <img src="https://flagcdn.com/w20/us.png" class="me-2 rounded-circle" style="width: 16px;">
+                <span class="fw-normal small">Personal • USD</span>
+            </div>
+
+            {% if total_profit_loss >= 0 %}
+            <span class="text-success fw-bold small">
+                +{{ total_profit_loss|floatformat:2 }} $
+            </span>
+            {% else %}
+            <span class="text-danger fw-bold small">
+                {{ total_profit_loss|floatformat:2 }} $
+            </span>
+            {% endif %}
+        </div>
+
+        <!-- Action Buttons Bar -->
+        <div class="d-flex gap-2">
+            <a href="{% url 'run-analysis' %}"
+                class="btn btn-outline-light rounded-pill px-3 py-1 bg-dark-card border-0 fw-bold d-flex align-items-center">
+                <i class="fas fa-plus me-2 text-primary"></i>Adaugă bani
+            </a>
+            <button
+                class="btn btn-outline-light rounded-pill px-3 py-1 bg-dark-card border-0 fw-bold d-flex align-items-center">
+                <i class="fas fa-exchange-alt me-2 text-primary"></i>Exchange
+            </button>
+            <button
+                class="btn btn-outline-light rounded-pill px-3 py-1 bg-dark-card border-0 fw-bold d-flex align-items-center">
+                <i class="fas fa-info-circle me-2 text-primary"></i>Detalii
+            </button>
+            <button
+                class="btn btn-outline-light rounded-pill px-3 py-1 bg-dark-card border-0 fw-bold d-flex align-items-center">
+                <i class="fas fa-ellipsis-h text-primary"></i>
+            </button>
+        </div>
     </div>
 </div>
 
-<div class="row align-items-md-stretch mt-5 pt-4">
-    <div class="col-md-4 mb-4 mb-md-0">
-        <div class="h-100 p-5 bg-light border rounded-3">
-            <h2>My Activity</h2>
-            {% if user.is_authenticated %}
-            <div class="d-grid gap-2 mt-4">
-                <a href="{% url 'select-portfolio-type' %}" class="btn btn-primary" type="button">Change Filters</a>
-                <a href="{% url 'portfolio-list' %}" class="btn btn-outline-secondary" type="button">My Portfolios</a>
+<!-- Portfolios List Section -->
+<div class="row">
+    <div class="col-12">
+        {% if performance_data %}
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <span class="text-muted fw-bold small text-uppercase">Portofolii Recente</span>
+        </div>
+
+        <div class="list-group list-group-flush">
+            {% for item in performance_data %}
+            <div class="list-group-item bg-transparent border-0 px-0 py-3 d-flex align-items-center justify-content-between sidebar-link"
+                style="border-radius: 8px;">
+                <!-- Left: Icon & Info -->
+                <div class="d-flex align-items-center flex-grow-1">
+                    <!-- Pseudo-random generic icons/colors for 'Revolut' look -->
+                    <div class="rounded-circle d-flex align-items-center justify-content-center me-3 flex-shrink-0 position-relative"
+                        style="width: 48px; height: 48px; background-color: {% cycle '#E91E63' '#9C27B0' '#3F51B5' '#00BCD4' '#009688' '#FFC107' '#FF5722' %}; color: white;">
+                        <span class="fw-bold fs-5">{{ item.portfolio.name|slice:":1"|upper }}</span>
+                        <div class="position-absolute bottom-0 end-0 bg-white rounded-circle d-flex align-items-center justify-content-center"
+                            style="width: 18px; height: 18px; border: 2px solid #131622;">
+                            <i class="fas fa-chart-pie text-dark" style="font-size: 8px;"></i>
+                        </div>
+                    </div>
+
+                    <div class="ms-1">
+                        <h5 class="mb-0 text-white fw-bold fs-6">{{ item.portfolio.name }}</h5>
+                        <div class="small text-muted">
+                            {% if item.profit_loss >= 0 %}
+                            <span class="text-secondary">{{ item.portfolio.created_at|date:"d M, H:i" }}</span>
+                            {% else %}
+                            <span class="text-secondary">Atenție · Scădere</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Financials -->
+                <div class="text-end ms-3">
+                    <span class="d-block text-white fw-bold">{{ item.current_value|floatformat:2 }} $</span>
+                    {% if item.profit_loss >= 0 %}
+                    <span class="d-block small text-success fw-bold">
+                        +{{ item.profit_loss|floatformat:2 }} $
+                    </span>
+                    {% else %}
+                    <span class="d-block small text-white">
+                        {{ item.profit_loss|floatformat:2 }} $
+                    </span>
+                    {% endif %}
+                </div>
             </div>
-            {% else %}
-            <div class="d-grid gap-2 mt-4">
-                <a href="{% url 'register' %}" class="btn btn-primary" type="button">Get Started</a>
-                <a href="{% url 'login' %}" class="btn btn-outline-primary" type="button">Login</a>
+            {% endfor %}
+        </div>
+
+        <div class="text-center mt-3 mb-5">
+            <a href="{% url 'portfolio-list' %}" class="btn btn-outline-light border-0 text-muted fw-bold">Vezi tot</a>
+        </div>
+
+        {% else %}
+        <!-- Empty State -->
+        <div class="text-center py-5 bg-dark-card rounded-3">
+            <div class="mb-4">
+                <div class="rounded-circle bg-dark bg-opacity-50 d-inline-flex align-items-center justify-content-center"
+                    style="width: 80px; height: 80px;">
+                    <i class="fas fa-plus fa-3x text-muted"></i>
+                </div>
             </div>
-            {% endif %}
+            <h3 class="fw-bold text-white mb-2">Începe să investești</h3>
+            <p class="text-muted mb-4 px-5">Creează primul tău portofoliu inteligent și urmărește-l aici.</p>
+            <a href="{% url 'run-analysis' %}" class="btn btn-primary rounded-pill px-5 fw-bold">
+                Analiză Nouă
+            </a>
         </div>
-    </div>
-    <div class="col-md-4 mb-4 mb-md-0">
-        <div class="h-100 p-5 text-white bg-dark rounded-3">
-            <h2>Track Portfolios</h2>
-            <p>Monitor your saved portfolios in real-time. Calculate your total profit/loss based on live market data
-                linked to your initial investment.</p>
-            <a href="{% url 'track-performance' %}" class="btn btn-outline-light" type="button">Check Performance</a>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="h-100 p-5 bg-light border rounded-3">
-            <h2>Market News</h2>
-            <p>Stay updated with the latest financial headlines directly from the market. Real-time updates via Google
-                News.</p>
-            <a href="{% url 'market-news' %}" class="btn btn-outline-dark" type="button">Read News</a>
-        </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

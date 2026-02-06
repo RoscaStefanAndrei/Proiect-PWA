@@ -1,51 +1,540 @@
 {% extends 'base.html' %}
 
-{% block title %}Run Analysis{% endblock %}
+{% block title %}Analiză Nouă{% endblock %}
+
+{% block header_title %}Analiză Nouă{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-md-8 text-center">
-        <div class="card shadow">
-            <div class="card-body p-5">
-                <h2 class="card-title">Stock Selection Algorithm</h2>
-                <p class="card-text lead">
-                    Run the advanced screening algorithm to identify high-potential stocks and generate an optimized
-                    portfolio.
-                </p>
-                <div class="alert alert-warning">
-                    <strong>Note:</strong> The process involves fetching data for thousands of tickers and may take
-                    <strong>6-7 minutes</strong> to complete.
+<style>
+    .analysis-hero {
+        background: linear-gradient(135deg, rgba(40, 167, 69, 0.15) 0%, rgba(0, 123, 255, 0.1) 100%);
+        border-radius: 20px;
+        padding: 2rem 2.5rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+    }
+
+    .analysis-header {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+        margin-bottom: 1.25rem;
+    }
+
+    .analysis-icon {
+        width: 60px;
+        height: 60px;
+        min-width: 60px;
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 8px 20px rgba(40, 167, 69, 0.3);
+        animation: pulse-glow 2s infinite;
+    }
+
+    @keyframes pulse-glow {
+
+        0%,
+        100% {
+            box-shadow: 0 8px 20px rgba(40, 167, 69, 0.3);
+        }
+
+        50% {
+            box-shadow: 0 8px 30px rgba(40, 167, 69, 0.5);
+        }
+    }
+
+    .analysis-icon i {
+        font-size: 1.75rem;
+        color: white;
+    }
+
+    .feature-badge {
+        display: inline-flex;
+        align-items: center;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 50px;
+        padding: 0.35rem 0.75rem;
+        margin: 0.2rem;
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+        transition: all 0.3s ease;
+    }
+
+    .feature-badge:hover {
+        background: rgba(40, 167, 69, 0.15);
+        border-color: rgba(40, 167, 69, 0.3);
+        color: #28a745;
+    }
+
+    .feature-badge i {
+        margin-right: 0.4rem;
+        color: #28a745;
+        font-size: 0.75rem;
+    }
+
+    .form-section {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.25rem;
+        margin: 1.25rem 0;
+    }
+
+    .investment-input-wrapper {
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 14px;
+        padding: 1rem 1.25rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .investment-input-wrapper .form-control {
+        background: rgba(255, 255, 255, 0.05);
+        border: 2px solid rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        color: white;
+        font-size: 1.25rem;
+        font-weight: 600;
+        text-align: center;
+        padding: 0.6rem;
+        transition: all 0.3s ease;
+    }
+
+    .investment-input-wrapper .form-control:focus {
+        background: rgba(255, 255, 255, 0.08);
+        border-color: #28a745;
+        box-shadow: 0 0 0 3px rgba(40, 167, 69, 0.15);
+        outline: none;
+    }
+
+    .strategy-selector {
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 14px;
+        padding: 1rem 1.25rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        position: relative;
+    }
+
+    .strategy-display {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .strategy-display .strategy-icon {
+        width: 45px;
+        height: 45px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.25rem;
+    }
+
+    .strategy-display .strategy-icon.balanced {
+        background: linear-gradient(135deg, rgba(0, 123, 255, 0.3) 0%, rgba(0, 123, 255, 0.15) 100%);
+        color: #0d6efd;
+    }
+
+    .strategy-display .strategy-icon.conservative {
+        background: linear-gradient(135deg, rgba(40, 167, 69, 0.3) 0%, rgba(40, 167, 69, 0.15) 100%);
+        color: #28a745;
+    }
+
+    .strategy-display .strategy-icon.aggressive {
+        background: linear-gradient(135deg, rgba(220, 53, 69, 0.3) 0%, rgba(220, 53, 69, 0.15) 100%);
+        color: #dc3545;
+    }
+
+    .strategy-display .strategy-icon.custom {
+        background: linear-gradient(135deg, rgba(255, 193, 7, 0.3) 0%, rgba(255, 193, 7, 0.15) 100%);
+        color: #ffc107;
+    }
+
+    .strategy-info {
+        flex: 1;
+    }
+
+    .strategy-info .strategy-label {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+        margin-bottom: 0.15rem;
+    }
+
+    .strategy-info .strategy-name {
+        font-weight: 600;
+        font-size: 1.1rem;
+        text-transform: capitalize;
+    }
+
+    .btn-change-strategy {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 8px;
+        padding: 0.5rem 0.75rem;
+        color: white;
+        font-size: 0.8rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+
+    .btn-change-strategy:hover {
+        background: rgba(255, 255, 255, 0.15);
+        border-color: rgba(255, 255, 255, 0.3);
+    }
+
+    .strategy-menu {
+        position: absolute;
+        bottom: 100%;
+        left: 0;
+        right: 0;
+        background: #1a1f2e;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 14px;
+        padding: 0.5rem;
+        margin-bottom: 0.5rem;
+        opacity: 0;
+        visibility: hidden;
+        transform: translateY(10px);
+        transition: all 0.3s ease;
+        z-index: 100;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    }
+
+    .strategy-menu.active {
+        opacity: 1;
+        visibility: visible;
+        transform: translateY(0);
+    }
+
+    .strategy-option {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 0.75rem;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border: none;
+        background: transparent;
+        width: 100%;
+        text-align: left;
+        color: white;
+    }
+
+    .strategy-option:hover {
+        background: rgba(255, 255, 255, 0.1);
+    }
+
+    .strategy-option.selected {
+        background: rgba(40, 167, 69, 0.2);
+        border: 1px solid rgba(40, 167, 69, 0.3);
+    }
+
+    .strategy-option .option-icon {
+        width: 28px;
+        height: 28px;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.85rem;
+    }
+
+    .strategy-option .option-icon.balanced {
+        background: linear-gradient(135deg, rgba(0, 123, 255, 0.3) 0%, rgba(0, 123, 255, 0.15) 100%);
+        color: #0d6efd;
+    }
+
+    .strategy-option .option-icon.conservative {
+        background: linear-gradient(135deg, rgba(40, 167, 69, 0.3) 0%, rgba(40, 167, 69, 0.15) 100%);
+        color: #28a745;
+    }
+
+    .strategy-option .option-icon.aggressive {
+        background: linear-gradient(135deg, rgba(220, 53, 69, 0.3) 0%, rgba(220, 53, 69, 0.15) 100%);
+        color: #dc3545;
+    }
+
+    .strategy-option .option-icon.custom {
+        background: linear-gradient(135deg, rgba(255, 193, 7, 0.3) 0%, rgba(255, 193, 7, 0.15) 100%);
+        color: #ffc107;
+    }
+
+    .strategy-option .option-details {
+        flex: 1;
+    }
+
+    .strategy-option .option-name {
+        font-weight: 600;
+        font-size: 0.85rem;
+        margin-bottom: 0;
+    }
+
+    .strategy-option .option-desc {
+        display: none;
+    }
+
+    .strategy-option .option-check {
+        color: #28a745;
+        opacity: 0;
+        transition: opacity 0.2s;
+    }
+
+    .strategy-option.selected .option-check {
+        opacity: 1;
+    }
+
+    .action-row {
+        display: flex;
+        align-items: center;
+        gap: 1.25rem;
+    }
+
+    .btn-start-analysis {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        border: none;
+        border-radius: 12px;
+        padding: 0.85rem 2.5rem;
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: white;
+        transition: all 0.3s ease;
+        box-shadow: 0 6px 20px rgba(40, 167, 69, 0.3);
+        white-space: nowrap;
+    }
+
+    .btn-start-analysis:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 30px rgba(40, 167, 69, 0.4);
+        color: white;
+    }
+
+    .time-notice {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: rgba(255, 193, 7, 0.1);
+        border: 1px solid rgba(255, 193, 7, 0.2);
+        border-radius: 8px;
+        padding: 0.6rem 1rem;
+        color: #ffc107;
+        font-size: 0.85rem;
+    }
+
+    .btn-view-progress {
+        background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);
+        border: none;
+        border-radius: 12px;
+        padding: 0.85rem 2.5rem;
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #000;
+        transition: all 0.3s ease;
+        box-shadow: 0 6px 20px rgba(255, 193, 7, 0.3);
+    }
+
+    .btn-view-progress:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 30px rgba(255, 193, 7, 0.4);
+        color: #000;
+    }
+
+    @media (max-width: 768px) {
+        .form-section {
+            grid-template-columns: 1fr;
+        }
+
+        .action-row {
+            flex-direction: column;
+        }
+    }
+</style>
+
+<div class="row">
+    <div class="col-12 col-xl-10 mx-auto">
+        <div class="analysis-hero">
+            <div class="analysis-header">
+                <div class="analysis-icon">
+                    <i class="fas fa-chart-pie"></i>
                 </div>
+                <div>
+                    <h3 class="fw-bold mb-1">Generează Portofoliu Nou</h3>
+                    <p class="text-muted mb-0 small">Algoritmul nostru avansat va analiza mii de acțiuni pentru
+                        portofoliul optim.</p>
+                </div>
+            </div>
 
-                {% if running %}
-                <a href="{% url 'analysis-status' %}" class="btn btn-warning btn-lg">View Progress</a>
-                {% else %}
-                <form method="POST">
-                    {% csrf_token %}
-                    <input type="hidden" name="portfolio_type" value="{{ initial_type }}">
+            <div class="d-flex flex-wrap mb-3">
+                <span class="feature-badge"><i class="fas fa-filter"></i> Filtrare Fundamentală</span>
+                <span class="feature-badge"><i class="fas fa-chart-line"></i> Analiză Tehnică</span>
+                <span class="feature-badge"><i class="fas fa-balance-scale"></i> Optimizare Risc</span>
+                <span class="feature-badge"><i class="fas fa-coins"></i> Alocare Automată</span>
+            </div>
 
-                    <div class="mb-4 text-start">
-                        <label for="investment_amount" class="form-label fw-bold">Investment Budget ($)</label>
-                        <input type="number" class="form-control form-control-lg" id="investment_amount"
-                            name="investment_amount" value="10000" min="1000" step="100" required>
-                        <div class="form-text">Adjust the total amount you wish to allocate across the selected
-                            portfolio.</div>
+            {% if running %}
+            <div class="d-flex align-items-center gap-3">
+                <div class="spinner-border text-warning" role="status" style="width: 2rem; height: 2rem;">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <span class="text-warning fw-bold">O analiză este în desfășurare...</span>
+                <a href="{% url 'analysis-status' %}" class="btn btn-view-progress ms-auto">
+                    <i class="fas fa-eye me-2"></i>Vezi Progresul
+                </a>
+            </div>
+            {% else %}
+            <form method="POST" id="analysisForm">
+                {% csrf_token %}
+                <input type="hidden" name="portfolio_type" id="portfolioType"
+                    value="{{ initial_type|default:'balanced' }}">
+
+                <div class="form-section">
+                    <div class="investment-input-wrapper">
+                        <label for="investment_amount" class="form-label text-muted mb-2 small">
+                            <i class="fas fa-dollar-sign me-2"></i>Suma de investit
+                        </label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-transparent border-0 text-success fs-5">$</span>
+                            <input type="number" class="form-control" id="investment_amount" name="investment_amount"
+                                value="10000" min="1000" step="100" required>
+                        </div>
+                        <small class="text-muted mt-1 d-block">Minim $1,000</small>
                     </div>
 
-                    <div class="alert alert-info d-flex align-items-center mb-4">
-                        <i class="bi bi-info-circle-fill me-2 fs-4"></i>
-                        <div>
-                            Selected Strategy: <span class="fw-bold text-uppercase">{{ initial_type }}</span>
+                    <div class="strategy-selector" id="strategySelector">
+                        <div class="strategy-menu" id="strategyMenu">
+                            <button type="button" class="strategy-option" data-value="balanced">
+                                <div class="option-icon balanced"><i class="fas fa-balance-scale"></i></div>
+                                <div class="option-details">
+                                    <div class="option-name">Balansat</div>
+                                    <div class="option-desc">Echilibru între creștere și stabilitate</div>
+                                </div>
+                                <i class="fas fa-check option-check"></i>
+                            </button>
+                            <button type="button" class="strategy-option" data-value="conservative">
+                                <div class="option-icon conservative"><i class="fas fa-shield-alt"></i></div>
+                                <div class="option-details">
+                                    <div class="option-name">Pasiv</div>
+                                    <div class="option-desc">Risc scăzut, dividende mari</div>
+                                </div>
+                                <i class="fas fa-check option-check"></i>
+                            </button>
+                            <button type="button" class="strategy-option" data-value="aggressive">
+                                <div class="option-icon aggressive"><i class="fas fa-rocket"></i></div>
+                                <div class="option-details">
+                                    <div class="option-name">Agresiv</div>
+                                    <div class="option-desc">Creștere maximă, volatilitate acceptată</div>
+                                </div>
+                                <i class="fas fa-check option-check"></i>
+                            </button>
+                            <hr class="my-2 border-secondary">
+                            <a href="{% url 'custom-filters' %}" class="strategy-option text-decoration-none"
+                                style="color: white;">
+                                <div class="option-icon custom"><i class="fas fa-sliders-h"></i></div>
+                                <div class="option-details">
+                                    <div class="option-name">Custom Filtering</div>
+                                </div>
+                                <i class="fas fa-external-link-alt option-check"
+                                    style="opacity: 0.5; color: #ffc107;"></i>
+                            </a>
+                        </div>
+
+                        <div class="strategy-display">
+                            <div class="strategy-icon balanced" id="currentStrategyIcon">
+                                <i class="fas fa-balance-scale"></i>
+                            </div>
+                            <div class="strategy-info">
+                                <div class="strategy-label">Strategie selectată</div>
+                                <div class="strategy-name" id="currentStrategyName">Balansat</div>
+                            </div>
+                            <button type="button" class="btn-change-strategy" id="toggleStrategyMenu">
+                                <i class="fas fa-chevron-up"></i>
+                                Modifică
+                            </button>
                         </div>
                     </div>
+                </div>
 
-                    <div class="d-grid">
-                        <button type="submit" class="btn btn-success btn-lg">Start Analysis</button>
+                <div class="action-row">
+                    <button type="submit" class="btn btn-start-analysis">
+                        <i class="fas fa-rocket me-2"></i>Pornește Analiza
+                    </button>
+                    <div class="time-notice">
+                        <i class="fas fa-clock"></i>
+                        <span>Procesul durează aproximativ <strong>6-7 minute</strong></span>
                     </div>
-                </form>
-                {% endif %}
-            </div>
+                </div>
+            </form>
+            {% endif %}
         </div>
     </div>
 </div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const strategyMenu = document.getElementById('strategyMenu');
+        const toggleBtn = document.getElementById('toggleStrategyMenu');
+        const strategyOptions = document.querySelectorAll('.strategy-option:not([disabled])');
+        const portfolioTypeInput = document.getElementById('portfolioType');
+        const currentStrategyIcon = document.getElementById('currentStrategyIcon');
+        const currentStrategyName = document.getElementById('currentStrategyName');
+
+        const strategyData = {
+            balanced: { name: 'Balansat', icon: 'fa-balance-scale', class: 'balanced' },
+            conservative: { name: 'Pasiv', icon: 'fa-shield-alt', class: 'conservative' },
+            aggressive: { name: 'Agresiv', icon: 'fa-rocket', class: 'aggressive' },
+            custom: { name: 'Custom', icon: 'fa-sliders-h', class: 'custom' }
+        };
+
+        // Initialize with current value
+        const initialValue = portfolioTypeInput.value || 'balanced';
+        updateDisplay(initialValue);
+        markSelected(initialValue);
+
+        // Toggle menu
+        toggleBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            strategyMenu.classList.toggle('active');
+        });
+
+        // Select option
+        strategyOptions.forEach(option => {
+            option.addEventListener('click', function () {
+                const value = this.dataset.value;
+                portfolioTypeInput.value = value;
+                updateDisplay(value);
+                markSelected(value);
+                strategyMenu.classList.remove('active');
+            });
+        });
+
+        // Close menu when clicking outside
+        document.addEventListener('click', function (e) {
+            if (!document.getElementById('strategySelector').contains(e.target)) {
+                strategyMenu.classList.remove('active');
+            }
+        });
+
+        function updateDisplay(value) {
+            const data = strategyData[value];
+            currentStrategyIcon.className = 'strategy-icon ' + data.class;
+            currentStrategyIcon.innerHTML = '<i class="fas ' + data.icon + '"></i>';
+            currentStrategyName.textContent = data.name;
+        }
+
+        function markSelected(value) {
+            strategyOptions.forEach(opt => {
+                opt.classList.remove('selected');
+                if (opt.dataset.value === value) {
+                    opt.classList.add('selected');
+                }
+            });
+        }
+    });
+</script>
 {% endblock %}

@@ -1,31 +1,35 @@
 {% extends 'base.html' %}
 
-{% block title %}My Portfolios{% endblock %}
+{% block title %}Portofoliile Mele{% endblock %}
+{% block header_title %}Portofolii{% endblock %}
 
 {% block content %}
-<div class="row mb-3">
-    <div class="col-md-10">
-        <h1>My Saved Portfolios</h1>
-    </div>
-</div>
-
-{% for portfolio in portfolios %}
-<div class="card mb-3 shadow-sm">
-    <div class="card-header bg-light d-flex justify-content-between align-items-center">
-        <h5 class="mb-0">
-            {{ portfolio.name }}
-        </h5>
-        <small class="text-muted">{{ portfolio.created_at|date:"F d, Y" }}</small>
-    </div>
-    <div class="card-body">
-        <p class="card-text">{{ portfolio.description|linebreaks }}</p>
-        <div class="text-end">
-            <a href="{% url 'portfolio-detail' portfolio.id %}" class="btn btn-sm btn-outline-primary">View</a>
-            <a href="{% url 'portfolio-delete' portfolio.id %}" class="btn btn-sm btn-outline-danger">Delete</a>
+<div class="row">
+    <div class="col-12">
+        {% for portfolio in portfolios %}
+        <div class="card mb-3 bg-dark-card border border-secondary shadow-sm">
+            <div
+                class="card-header bg-transparent border-bottom border-secondary d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 text-white fw-bold">
+                    {{ portfolio.name }}
+                </h5>
+                <small class="text-muted">{{ portfolio.created_at|date:"d M Y" }}</small>
+            </div>
+            <div class="card-body">
+                <p class="card-text text-light">{{ portfolio.description|linebreaks }}</p>
+                <div class="d-flex justify-content-end gap-2">
+                    <a href="{% url 'portfolio-detail' portfolio.id %}" class="btn btn-sm btn-outline-light">Detalii</a>
+                    <a href="{% url 'portfolio-delete' portfolio.id %}" class="btn btn-sm btn-outline-danger">Șterge</a>
+                </div>
+            </div>
         </div>
+        {% empty %}
+        <div class="text-center py-5">
+            <i class="fas fa-folder-open fa-3x text-muted mb-3"></i>
+            <p class="text-muted">Nu ai salvat niciun portofoliu momentan.</p>
+            <a href="{% url 'run-analysis' %}" class="btn btn-primary rounded-pill px-4">Analiză Nouă</a>
+        </div>
+        {% endfor %}
     </div>
 </div>
-{% empty %}
-<div class="alert alert-info">You have no saved portfolios yet. Run an analysis to create one!</div>
-{% endfor %}
 {% endblock %}

@@ -2,11 +2,29 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.models import User
-from .forms import UserRegisterForm, UserProfileForm
+from .forms import UserRegisterForm, UserProfileForm, UserUpdateForm
 from .models import UserProfile, SavedPortfolio
 
+@login_required
 def home(request):
-    return render(request, 'SmartVest/home.html')
+    performance_data = []
+    total_balance = 0.0
+    total_profit_loss = 0.0
+    
+    if request.user.is_authenticated:
+        portfolios = SavedPortfolio.objects.filter(user=request.user).order_by('-created_at')
+        performance_data = get_portfolio_performance(portfolios)
+        
+        for item in performance_data:
+            total_balance += item['current_value']
+            total_profit_loss += item['profit_loss']
+    
+    context = {
+        'performance_data': performance_data,
+        'total_balance': total_balance,
+        'total_profit_loss': total_profit_loss
+    }
+    return render(request, 'SmartVest/home.html', context)
 
 def register(request):
     if request.method == 'POST':
@@ -25,22 +43,38 @@ def register(request):
 @login_required
 def profile(request):
     if request.method == 'POST':
+        u_form = UserUpdateForm(request.POST, instance=request.user)
         p_form = UserProfileForm(request.POST, request.FILES, instance=request.user.userprofile)
-        if p_form.is_valid():
+        if u_form.is_valid() and p_form.is_valid():
+            u_form.save()
             p_form.save()
-            messages.success(request, f'Your profile has been updated!')
+            messages.success(request, f'Contul tău a fost actualizat!')
             return redirect('profile')
     else:
         # Ensure profile exists (fallback for superusers created via CLI)
         if not hasattr(request.user, 'userprofile'):
             UserProfile.objects.create(user=request.user)
             
+        u_form = UserUpdateForm(instance=request.user)
         p_form = UserProfileForm(instance=request.user.userprofile)
 
     context = {
+        'u_form': u_form,
         'p_form': p_form
     }
     return render(request, 'SmartVest/profile.html', context)
+
+@login_required
+def delete_profile(request):
+    if request.method == 'POST':
+        user = request.user
+        username = user.username
+        # Delete user
+        user.delete()
+        messages.success(request, f'Profilul "{username}" a fost șters cu succes.')
+        return redirect('login')
+        
+    return render(request, 'SmartVest/profile_confirm_delete.html')
 
 from .models import SavedPortfolio
 from .forms import SavedPortfolioForm
@@ -289,3 +323,258 @@ def admin_user_detail(request, user_id):
         'performance_data': performance_data
     }
     return render(request, 'SmartVest/admin_user_detail.html', context)
+
+# ==========================
+# CUSTOM FILTERS & PRESETS
+# ==========================
+from .models import FilterPreset
+import json
+
+# All available Finviz filters organized by category
+FINVIZ_FILTERS = {
+    'descriptive': {
+        'Exchange': ['Any', 'AMEX', 'NASDAQ', 'NYSE'],
+        'Market Cap.': ['Any', 'Mega ($200bln and more)', 'Large ($10bln to $200bln)', '+Large (over $10bln)', 
+                       'Mid ($2bln to $10bln)', '+Mid (over $2bln)', 'Small ($300mln to $2bln)', 
+                       '+Small (over $300mln)', 'Micro ($50mln to $300mln)', 'Nano (under $50mln)'],
+        'Dividend Yield': ['Any', 'None (0%)', 'Positive (>0%)', 'High (>5%)', 'Very High (>10%)'],
+        'Average Volume': ['Any', 'Under 50K', 'Under 100K', 'Under 500K', 'Under 750K', 'Under 1M', 
+                          'Over 50K', 'Over 100K', 'Over 200K', 'Over 300K', 'Over 400K', 'Over 500K', 
+                          'Over 750K', 'Over 1M', 'Over 2M'],
+        'Relative Volume': ['Any', 'Over 0.25', 'Over 0.5', 'Over 1', 'Over 1.5', 'Over 2', 'Over 3', 
+                           'Over 5', 'Over 10', 'Under 0.5', 'Under 0.75', 'Under 1', 'Under 1.5', 'Under 2'],
+        'Float': ['Any', 'Under 1M', 'Under 5M', 'Under 10M', 'Under 20M', 'Under 50M', 'Under 100M', 
+                  'Over 1M', 'Over 2M', 'Over 5M', 'Over 10M', 'Over 20M', 'Over 50M', 'Over 100M', 'Over 200M', 'Over 500M'],
+        'Sector': ['Any', 'Basic Materials', 'Communication Services', 'Consumer Cyclical', 
+                   'Consumer Defensive', 'Energy', 'Financial', 'Healthcare', 'Industrials', 
+                   'Real Estate', 'Technology', 'Utilities'],
+        'Industry': ['Any'],  # Too many to list, we'll keep "Any" for simplicity
+        'Country': ['Any', 'USA', 'Foreign (ex-USA)', 'China', 'Japan', 'UK', 'Canada', 'Germany', 'France'],
+    },
+    'fundamental': {
+        'P/E': ['Any', 'Low (<15)', 'Profitable (>0)', 'High (>50)', 'Under 5', 'Under 10', 'Under 15', 
+                'Under 20', 'Under 25', 'Under 30', 'Under 35', 'Under 40', 'Under 45', 'Under 50', 
+                'Over 5', 'Over 10', 'Over 15', 'Over 20', 'Over 25', 'Over 30', 'Over 35', 'Over 40', 'Over 50'],
+        'Forward P/E': ['Any', 'Low (<15)', 'Profitable (>0)', 'High (>50)', 'Under 5', 'Under 10', 
+                       'Under 15', 'Under 20', 'Under 25', 'Under 30', 'Over 5', 'Over 10', 'Over 15', 
+                       'Over 20', 'Over 25', 'Over 30', 'Over 35', 'Over 40', 'Over 50'],
+        'PEG': ['Any', 'Low (<1)', 'High (>2)', 'Under 1', 'Under 2', 'Under 3', 'Over 1', 'Over 2', 'Over 3'],
+        'P/S': ['Any', 'Low (<1)', 'High (>10)', 'Under 1', 'Under 2', 'Under 3', 'Under 4', 'Under 5', 
+                'Under 6', 'Under 7', 'Under 8', 'Under 9', 'Under 10', 'Over 1', 'Over 2', 'Over 3', 
+                'Over 4', 'Over 5', 'Over 6', 'Over 7', 'Over 8', 'Over 9', 'Over 10'],
+        'P/B': ['Any', 'Low (<1)', 'High (>5)', 'Under 1', 'Under 2', 'Under 3', 'Under 4', 'Under 5', 
+                'Under 6', 'Under 7', 'Under 8', 'Under 9', 'Under 10', 'Over 1', 'Over 2', 'Over 3', 
+                'Over 4', 'Over 5', 'Over 6', 'Over 7', 'Over 8', 'Over 9', 'Over 10'],
+        'EPS growthnext 5 years': ['Any', 'Negative (<0%)', 'Positive (>0%)', 'Under 5%', 'Under 10%', 
+                                   'Under 15%', 'Under 20%', 'Under 25%', 'Under 30%', 'Over 5%', 
+                                   'Over 10%', 'Over 15%', 'Over 20%', 'Over 25%', 'Over 30%'],
+        'EPS growththis year': ['Any', 'Negative (<0%)', 'Positive (>0%)', 'Over 5%', 'Over 10%', 
+                               'Over 15%', 'Over 20%', 'Over 25%', 'Over 30%'],
+        'EPS growthnext year': ['Any', 'Negative (<0%)', 'Positive (>0%)', 'Over 5%', 'Over 10%', 
+                               'Over 15%', 'Over 20%', 'Over 25%', 'Over 30%'],
+        'Return on Equity': ['Any', 'Positive (>0%)', 'Negative (<0%)', 'Very Positive (>30%)', 
+                            'Over +5%', 'Over +10%', 'Over +15%', 'Over +20%', 'Over +25%', 
+                            'Over +30%', 'Under +5%', 'Under +10%', 'Under +15%', 'Under +20%', 
+                            'Under +25%', 'Under +30%', 'Under -15%', 'Under -30%'],
+        'Return on Assets': ['Any', 'Positive (>0%)', 'Negative (<0%)', 'Very Positive (>15%)', 
+                            'Over +5%', 'Over +10%', 'Over +15%', 'Over +20%', 'Over +25%'],
+        'Return on Investment': ['Any', 'Positive (>0%)', 'Negative (<0%)', 'Very Positive (>25%)', 
+                                'Over +5%', 'Over +10%', 'Over +15%', 'Over +20%', 'Over +25%'],
+        'Current Ratio': ['Any', 'High (>3)', 'Low (<1)', 'Under 1', 'Under 0.5', 'Over 0.5', 
+                         'Over 1', 'Over 1.5', 'Over 2', 'Over 3', 'Over 4', 'Over 5', 'Over 10'],
+        'Debt/Equity': ['Any', 'High (>0.5)', 'Low (<0.1)', 'Under 0.1', 'Under 0.2', 'Under 0.3', 
+                       'Under 0.4', 'Under 0.5', 'Under 0.6', 'Under 0.7', 'Under 0.8', 'Under 0.9', 
+                       'Under 1', 'Over 0.1', 'Over 0.2', 'Over 0.3', 'Over 0.4', 'Over 0.5', 
+                       'Over 0.6', 'Over 0.7', 'Over 0.8', 'Over 0.9', 'Over 1'],
+        'Gross Margin': ['Any', 'Positive (>0%)', 'Negative (<0%)', 'High (>50%)', 'Over 0%', 
+                        'Over 10%', 'Over 20%', 'Over 30%', 'Over 40%', 'Over 50%', 'Over 60%', 
+                        'Over 70%', 'Over 80%', 'Over 90%'],
+        'Operating Margin': ['Any', 'Positive (>0%)', 'Negative (<0%)', 'Very Negative (<-20%)', 
+                            'High (>25%)', 'Over 0%', 'Over 5%', 'Over 10%', 'Over 15%', 'Over 20%', 
+                            'Over 25%', 'Over 30%'],
+        'Net Profit Margin': ['Any', 'Positive (>0%)', 'Negative (<0%)', 'Very Negative (<-20%)', 
+                             'High (>20%)', 'Over 0%', 'Over 5%', 'Over 10%', 'Over 15%', 'Over 20%', 
+                             'Over 25%', 'Over 30%'],
+    },
+    'technical': {
+        '20-Day Simple Moving Average': ['Any', 'Price below SMA20', 'Price 10% below SMA20', 
+                                         'Price 20% below SMA20', 'Price 30% below SMA20', 
+                                         'Price 40% below SMA20', 'Price 50% below SMA20', 
+                                         'Price above SMA20', 'Price 10% above SMA20', 
+                                         'Price 20% above SMA20', 'Price 30% above SMA20', 
+                                         'Price 40% above SMA20', 'Price 50% above SMA20', 
+                                         'Price crossed SMA20', 'Price crossed SMA20 above', 
+                                         'Price crossed SMA20 below', 'SMA20 crossed SMA50', 
+                                         'SMA20 crossed SMA50 above', 'SMA20 crossed SMA50 below'],
+        '50-Day Simple Moving Average': ['Any', 'Price below SMA50', 'Price 10% below SMA50', 
+                                         'Price 20% below SMA50', 'Price 30% below SMA50', 
+                                         'Price 40% below SMA50', 'Price 50% below SMA50', 
+                                         'Price above SMA50', 'Price 10% above SMA50', 
+                                         'Price 20% above SMA50', 'Price 30% above SMA50', 
+                                         'Price 40% above SMA50', 'Price 50% above SMA50', 
+                                         'Price crossed SMA50', 'Price crossed SMA50 above', 
+                                         'Price crossed SMA50 below', 'SMA50 crossed SMA200', 
+                                         'SMA50 crossed SMA200 above', 'SMA50 crossed SMA200 below'],
+        '200-Day Simple Moving Average': ['Any', 'Price below SMA200', 'Price 10% below SMA200', 
+                                          'Price 20% below SMA200', 'Price 30% below SMA200', 
+                                          'Price 40% below SMA200', 'Price 50% below SMA200', 
+                                          'Price above SMA200', 'Price 10% above SMA200', 
+                                          'Price 20% above SMA200', 'Price 30% above SMA200', 
+                                          'Price 40% above SMA200', 'Price 50% above SMA200', 
+                                          'Price crossed SMA200', 'Price crossed SMA200 above', 
+                                          'Price crossed SMA200 below'],
+        'RSI (14)': ['Any', 'Overbought (90)', 'Overbought (80)', 'Overbought (70)', 'Overbought (60)', 
+                    'Oversold (40)', 'Oversold (30)', 'Oversold (20)', 'Oversold (10)', 
+                    'Not Overbought (<60)', 'Not Overbought (<50)', 'Not Oversold (>50)', 
+                    'Not Oversold (>40)'],
+        'Beta': ['Any', 'Under 0', 'Under 0.5', 'Under 1', 'Under 1.5', 'Under 2', 
+                 'Over 0', 'Over 0.5', 'Over 1', 'Over 1.5', 'Over 2', 'Over 2.5', 
+                 'Over 3', 'Over 4'],
+        'Volatility': ['Any', 'Week - Over 3%', 'Week - Over 4%', 'Week - Over 5%', 
+                      'Week - Over 6%', 'Week - Over 7%', 'Week - Over 8%', 'Week - Over 9%', 
+                      'Week - Over 10%', 'Week - Over 12%', 'Week - Over 15%', 
+                      'Month - Over 2%', 'Month - Over 3%', 'Month - Over 4%', 
+                      'Month - Over 5%', 'Month - Over 6%', 'Month - Over 8%', 
+                      'Month - Over 10%'],
+        'Gap': ['Any', 'Up', 'Up 0%', 'Up 1%', 'Up 2%', 'Up 3%', 'Up 4%', 'Up 5%', 
+                'Down', 'Down 0%', 'Down 1%', 'Down 2%', 'Down 3%', 'Down 4%', 'Down 5%'],
+        '52W High/Low': ['Any', 'New High', 'New Low', '0-3% below High', '0-5% below High', 
+                        '0-10% below High', '5-10% below High', '10-15% below High', 
+                        '15-20% below High', '20-30% below High', '30-40% below High', 
+                        '40-50% below High', '50%+ below High', '0-3% above Low', 
+                        '0-5% above Low', '0-10% above Low', '5-10% above Low', 
+                        '10-15% above Low', '15-20% above Low', '20-30% above Low', 
+                        '30-40% above Low', '40-50% above Low', '50%+ above Low'],
+        'Pattern': ['Any', 'Horizontal S/R', 'Horizontal S/R (Strong)', 'TL Resistance', 
+                   'TL Resistance (Strong)', 'TL Support', 'TL Support (Strong)', 
+                   'Wedge Up', 'Wedge Up (Strong)', 'Wedge Down', 'Wedge Down (Strong)', 
+                   'Triangle Ascending', 'Triangle Ascending (Strong)', 'Triangle Descending', 
+                   'Triangle Descending (Strong)', 'Wedge', 'Wedge (Strong)', 
+                   'Channel Up', 'Channel Up (Strong)', 'Channel Down', 'Channel Down (Strong)', 
+                   'Channel', 'Channel (Strong)', 'Double Top', 'Double Bottom', 
+                   'Multiple Top', 'Multiple Bottom', 'Head & Shoulders', 'Head & Shoulders Inverse'],
+    }
+}
+
+@login_required
+def custom_filters(request):
+    """Page with all Finviz filter options"""
+    presets = FilterPreset.objects.filter(user=request.user)
+    
+    context = {
+        'filters': FINVIZ_FILTERS,
+        'presets': presets,
+        'filters_json': json.dumps(FINVIZ_FILTERS)
+    }
+    return render(request, 'SmartVest/custom_filters.html', context)
+
+@login_required
+def save_preset(request):
+    """Save a new filter preset via AJAX"""
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            name = data.get('name', 'My Preset')
+            filters = data.get('filters', {})
+            
+            # Create preset
+            preset = FilterPreset.objects.create(
+                user=request.user,
+                name=name,
+                filters=filters
+            )
+            
+            return JsonResponse({
+                'success': True, 
+                'preset_id': preset.id,
+                'message': f'Preset "{name}" salvat cu succes!'
+            })
+        except Exception as e:
+            return JsonResponse({'success': False, 'message': str(e)})
+    
+    return JsonResponse({'success': False, 'message': 'Invalid request'})
+
+@login_required
+def delete_preset(request, pk):
+    """Delete a filter preset"""
+    preset = get_object_or_404(FilterPreset, pk=pk, user=request.user)
+    preset_name = preset.name
+    preset.delete()
+    messages.success(request, f'Preset "{preset_name}" șters cu succes!')
+    return redirect('presets-list')
+
+@login_required
+def presets_list(request):
+    """List all user's filter presets"""
+    presets = FilterPreset.objects.filter(user=request.user)
+    return render(request, 'SmartVest/presets_list.html', {'presets': presets})
+
+@login_required
+def update_preset(request, pk):
+    """Update a filter preset's name and description"""
+    preset = get_object_or_404(FilterPreset, pk=pk, user=request.user)
+    
+    if request.method == 'POST':
+        preset.name = request.POST.get('name', preset.name)
+        preset.description = request.POST.get('description', preset.description)
+        preset.save()
+        messages.success(request, f'Preset "{preset.name}" actualizat cu succes!')
+        return redirect('presets-list')
+    
+    return redirect('presets-list')
+
+@login_required  
+def run_with_preset(request, pk):
+    """Run analysis with a saved preset's filters"""
+    global ALGO_RUNNING
+    
+    preset = get_object_or_404(FilterPreset, pk=pk, user=request.user)
+    
+    if ALGO_RUNNING:
+        messages.warning(request, "O analiză este deja în desfășurare!")
+        return redirect('analysis-status')
+    
+    budget = float(request.GET.get('budget', 10000))
+    
+    # Start analysis with custom filters
+    thread = threading.Thread(target=run_algo_script_custom, args=(preset.filters, budget))
+    thread.daemon = True
+    thread.start()
+    
+    messages.success(request, f"Analiză pornită cu preset-ul '{preset.name}' și buget ${budget:,.2f}.")
+    return redirect('analysis-status')
+
+def run_algo_script_custom(filters_dict, budget=10000.0):
+    """Run algorithm with custom filters"""
+    global ALGO_RUNNING
+    ALGO_RUNNING = True
+    print(f"Starting Algorithm with Custom Filters and Budget: ${budget}...")
+    try:
+        script_path = os.path.join(settings.BASE_DIR, 'selection_algorithm.py')
+        
+        # Save filters to temp file to avoid shell escaping issues
+        temp_filters_path = os.path.join(settings.BASE_DIR, 'temp_custom_filters.json')
+        with open(temp_filters_path, 'w', encoding='utf-8') as f:
+            json.dump(filters_dict, f)
+        
+        command = ["python", script_path, "--custom-filters-file", temp_filters_path, "--budget", str(budget)]
+        
+        subprocess.run(command, cwd=settings.BASE_DIR, check=True)
+        print("Algorithm Script Finished.")
+        
+        # Cleanup temp file
+        if os.path.exists(temp_filters_path):
+            os.remove(temp_filters_path)
+    except Exception as e:
+        print(f"Algorithm Error: {e}")
+    finally:
+        ALGO_RUNNING = False
+
+from django.http import JsonResponse
+
+def get_user_presets(request):
+    """Get presets for sidebar - returns as context"""
+    if request.user.is_authenticated:
+        return FilterPreset.objects.filter(user=request.user)[:5]
+    return []
+

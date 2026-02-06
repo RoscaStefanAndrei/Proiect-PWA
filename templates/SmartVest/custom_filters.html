@@ -1,0 +1,462 @@
+{% extends 'base.html' %}
+
+{% block title %}Filtre Custom{% endblock %}
+
+{% block header_title %}Filtre Custom{% endblock %}
+
+{% block content %}
+<style>
+    .filters-container {
+        display: grid;
+        grid-template-columns: 1fr 320px;
+        gap: 1.5rem;
+    }
+
+    .filter-section {
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 14px;
+        padding: 1.25rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        margin-bottom: 1rem;
+    }
+
+    .filter-section h4 {
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .filter-section h4 i {
+        opacity: 0.7;
+    }
+
+    .filter-section.descriptive h4 {
+        color: #0d6efd;
+    }
+
+    .filter-section.fundamental h4 {
+        color: #28a745;
+    }
+
+    .filter-section.technical h4 {
+        color: #ffc107;
+    }
+
+    .filter-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 0.75rem;
+    }
+
+    .filter-item {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        padding: 0.6rem 0.75rem;
+    }
+
+    .filter-item label {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+        display: block;
+        margin-bottom: 0.25rem;
+    }
+
+    .filter-item select {
+        width: 100%;
+        background: #0a0a0a;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 6px;
+        color: white;
+        padding: 0.4rem 0.5rem;
+        font-size: 0.8rem;
+        cursor: pointer;
+    }
+
+    .filter-item select option {
+        background: #0a0a0a;
+        color: white;
+        padding: 0.5rem;
+    }
+
+    .filter-item select:focus {
+        outline: none;
+        border-color: #28a745;
+    }
+
+    .filter-item.active {
+        border-color: #28a745;
+        background: rgba(40, 167, 69, 0.1);
+    }
+
+    .sidebar-panel {
+        position: sticky;
+        top: 1rem;
+    }
+
+    .presets-panel,
+    .actions-panel {
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 14px;
+        padding: 1.25rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        margin-bottom: 1rem;
+    }
+
+    .presets-panel h5,
+    .actions-panel h5 {
+        margin-bottom: 1rem;
+        font-size: 0.9rem;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .preset-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.6rem 0.75rem;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 8px;
+        margin-bottom: 0.5rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .preset-item:hover {
+        background: rgba(255, 255, 255, 0.1);
+    }
+
+    .preset-item .preset-name {
+        font-weight: 500;
+        font-size: 0.9rem;
+    }
+
+    .preset-item .preset-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .preset-item .btn-sm {
+        padding: 0.2rem 0.5rem;
+        font-size: 0.75rem;
+    }
+
+    .active-filters {
+        background: rgba(40, 167, 69, 0.1);
+        border: 1px solid rgba(40, 167, 69, 0.2);
+        border-radius: 8px;
+        padding: 0.75rem;
+        margin-bottom: 1rem;
+        max-height: 150px;
+        overflow-y: auto;
+    }
+
+    .active-filter-tag {
+        display: inline-flex;
+        align-items: center;
+        background: rgba(40, 167, 69, 0.2);
+        border-radius: 4px;
+        padding: 0.2rem 0.5rem;
+        margin: 0.2rem;
+        font-size: 0.75rem;
+    }
+
+    .active-filter-tag .remove {
+        margin-left: 0.4rem;
+        cursor: pointer;
+        opacity: 0.7;
+    }
+
+    .active-filter-tag .remove:hover {
+        opacity: 1;
+    }
+
+    .btn-save-preset {
+        background: linear-gradient(135deg, #6c5ce7 0%, #a29bfe 100%);
+        border: none;
+        width: 100%;
+        padding: 0.75rem;
+        border-radius: 10px;
+        font-weight: 600;
+        transition: all 0.3s;
+    }
+
+    .btn-save-preset:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(108, 92, 231, 0.4);
+    }
+
+    .btn-run-analysis {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        border: none;
+        width: 100%;
+        padding: 0.75rem;
+        border-radius: 10px;
+        font-weight: 600;
+        transition: all 0.3s;
+    }
+
+    .btn-run-analysis:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
+    }
+
+    .investment-input {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        color: white;
+        padding: 0.5rem 0.75rem;
+        width: 100%;
+        margin-bottom: 0.75rem;
+    }
+
+    .investment-input:focus {
+        outline: none;
+        border-color: #28a745;
+    }
+
+    .no-presets {
+        text-align: center;
+        color: var(--text-secondary);
+        font-size: 0.85rem;
+        padding: 1rem;
+    }
+
+    @media (max-width: 992px) {
+        .filters-container {
+            grid-template-columns: 1fr;
+        }
+
+        .sidebar-panel {
+            position: static;
+        }
+    }
+</style>
+
+<div class="filters-container">
+    <div class="filters-main">
+        <!-- Descriptive Filters -->
+        <div class="filter-section descriptive">
+            <h4><i class="fas fa-info-circle"></i> Filtre Descriptive</h4>
+            <div class="filter-grid">
+                {% for key, values in filters.descriptive.items %}
+                <div class="filter-item" data-filter="{{ key }}">
+                    <label>{{ key }}</label>
+                    <select name="{{ key }}" onchange="updateFilter('{{ key }}', this.value)">
+                        {% for val in values %}
+                        <option value="{{ val }}">{{ val }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Fundamental Filters -->
+        <div class="filter-section fundamental">
+            <h4><i class="fas fa-chart-bar"></i> Filtre Fundamentale</h4>
+            <div class="filter-grid">
+                {% for key, values in filters.fundamental.items %}
+                <div class="filter-item" data-filter="{{ key }}">
+                    <label>{{ key }}</label>
+                    <select name="{{ key }}" onchange="updateFilter('{{ key }}', this.value)">
+                        {% for val in values %}
+                        <option value="{{ val }}">{{ val }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Technical Filters -->
+        <div class="filter-section technical">
+            <h4><i class="fas fa-chart-line"></i> Filtre Tehnice</h4>
+            <div class="filter-grid">
+                {% for key, values in filters.technical.items %}
+                <div class="filter-item" data-filter="{{ key }}">
+                    <label>{{ key }}</label>
+                    <select name="{{ key }}" onchange="updateFilter('{{ key }}', this.value)">
+                        {% for val in values %}
+                        <option value="{{ val }}">{{ val }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="sidebar-panel">
+        <!-- Active Filters -->
+        <div class="actions-panel">
+            <h5><i class="fas fa-filter me-2"></i>Filtre Active</h5>
+            <div class="active-filters" id="activeFilters">
+                <span class="text-muted small">Niciun filtru selectat</span>
+            </div>
+
+            <label class="small text-muted mb-2 d-block">Buget de investit ($)</label>
+            <input type="number" class="investment-input" id="investmentAmount" value="10000" min="1000" step="100">
+
+            <button class="btn btn-run-analysis text-white mb-2" onclick="runAnalysis()">
+                <i class="fas fa-rocket me-2"></i>Pornește Analiza
+            </button>
+
+            <hr class="border-secondary my-3">
+
+            <div class="input-group mb-2">
+                <input type="text" class="form-control form-control-sm bg-dark text-white border-secondary"
+                    id="presetName" placeholder="Nume preset...">
+            </div>
+            <button class="btn btn-save-preset text-white" onclick="savePreset()">
+                <i class="fas fa-save me-2"></i>Salvează Preset
+            </button>
+        </div>
+
+        <!-- Saved Presets -->
+        <div class="presets-panel">
+            <h5><i class="fas fa-bookmark me-2"></i>Preset-uri Salvate</h5>
+            {% if presets %}
+            {% for preset in presets %}
+            <div class="preset-item">
+                <span class="preset-name">{{ preset.name }}</span>
+                <div class="preset-actions">
+                    <a href="{% url 'run-with-preset' preset.pk %}?budget=10000" class="btn btn-sm btn-outline-success"
+                        title="Rulează">
+                        <i class="fas fa-play"></i>
+                    </a>
+                    <a href="{% url 'delete-preset' preset.pk %}" class="btn btn-sm btn-outline-danger" title="Șterge">
+                        <i class="fas fa-trash"></i>
+                    </a>
+                </div>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="no-presets">
+                <i class="fas fa-inbox mb-2" style="font-size: 1.5rem; opacity: 0.5;"></i>
+                <p class="mb-0">Nu ai preset-uri salvate</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+    // Store current filters
+    let currentFilters = {};
+
+    function updateFilter(key, value) {
+        const filterItem = document.querySelector(`[data-filter="${key}"]`);
+
+        if (value === 'Any') {
+            delete currentFilters[key];
+            filterItem.classList.remove('active');
+        } else {
+            currentFilters[key] = value;
+            filterItem.classList.add('active');
+        }
+
+        updateActiveFiltersDisplay();
+    }
+
+    function updateActiveFiltersDisplay() {
+        const container = document.getElementById('activeFilters');
+        const keys = Object.keys(currentFilters);
+
+        if (keys.length === 0) {
+            container.innerHTML = '<span class="text-muted small">Niciun filtru selectat</span>';
+            return;
+        }
+
+        let html = '';
+        keys.forEach(key => {
+            html += `<span class="active-filter-tag">
+            ${key}: ${currentFilters[key]}
+            <span class="remove" onclick="removeFilter('${key}')">&times;</span>
+        </span>`;
+        });
+        container.innerHTML = html;
+    }
+
+    function removeFilter(key) {
+        delete currentFilters[key];
+        const select = document.querySelector(`[data-filter="${key}"] select`);
+        if (select) {
+            select.value = 'Any';
+        }
+        document.querySelector(`[data-filter="${key}"]`).classList.remove('active');
+        updateActiveFiltersDisplay();
+    }
+
+    function savePreset() {
+        const name = document.getElementById('presetName').value.trim();
+
+        if (!name) {
+            alert('Te rog introdu un nume pentru preset!');
+            return;
+        }
+
+        if (Object.keys(currentFilters).length === 0) {
+            alert('Te rog selectează cel puțin un filtru!');
+            return;
+        }
+
+        fetch('{% url "save-preset" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({
+                name: name,
+                filters: currentFilters
+            })
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message);
+                    location.reload();
+                } else {
+                    alert('Eroare: ' + data.message);
+                }
+            });
+    }
+
+    function runAnalysis() {
+        if (Object.keys(currentFilters).length === 0) {
+            alert('Te rog selectează cel puțin un filtru!');
+            return;
+        }
+
+        // First save as temporary preset, then run
+        const budget = document.getElementById('investmentAmount').value;
+
+        fetch('{% url "save-preset" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({
+                name: '_temp_' + Date.now(),
+                filters: currentFilters
+            })
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    window.location.href = `/presets/${data.preset_id}/run/?budget=${budget}`;
+                } else {
+                    alert('Eroare: ' + data.message);
+                }
+            });
+    }
+</script>
+{% endblock %}

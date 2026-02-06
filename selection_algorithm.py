@@ -696,13 +696,48 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="SmartVest Selection Algorithm")
     parser.add_argument("--profile", type=str, default="balanced", choices=["conservative", "balanced", "aggressive"], help="Investment profile")
     parser.add_argument("--budget", type=float, default=10000.0, help="Investment budget")
+    parser.add_argument("--custom-filters", type=str, default=None, help="Custom filters as JSON string")
+    parser.add_argument("--custom-filters-file", type=str, default=None, help="Path to JSON file with custom filters")
     
     args = parser.parse_args()
     
     selected_profile = args.profile
     BUGET_TOTAL = args.budget
+    custom_filters_json = getattr(args, 'custom_filters', None)
+    custom_filters_file = getattr(args, 'custom_filters_file', None)
     
-    print(f"Running Analysis with Profile: {selected_profile.upper()} and Budget: ${BUGET_TOTAL}")
+    # Check if using custom filters from file (preferred method)
+    if custom_filters_file:
+        import json
+        try:
+            with open(custom_filters_file, 'r', encoding='utf-8') as f:
+                filtre_curente = json.load(f)
+            print(f"Running Analysis with CUSTOM FILTERS (from file) and Budget: ${BUGET_TOTAL}")
+            print(f"Custom filters: {filtre_curente}")
+        except Exception as e:
+            print(f"Error reading custom filters file: {e}")
+            print("Falling back to balanced profile...")
+            filtre_curente = FILTRE_BALANCED
+    # Check if using custom filters from JSON string
+    elif custom_filters_json:
+        import json
+        try:
+            filtre_curente = json.loads(custom_filters_json)
+            print(f"Running Analysis with CUSTOM FILTERS and Budget: ${BUGET_TOTAL}")
+            print(f"Custom filters: {filtre_curente}")
+        except json.JSONDecodeError as e:
+            print(f"Error parsing custom filters JSON: {e}")
+            print("Falling back to balanced profile...")
+            filtre_curente = FILTRE_BALANCED
+    else:
+        print(f"Running Analysis with Profile: {selected_profile.upper()} and Budget: ${BUGET_TOTAL}")
+        # Select Filter based on profile
+        if selected_profile == "conservative":
+            filtre_curente = FILTRE_CONSERVATIVE
+        elif selected_profile == "aggressive":
+            filtre_curente = FILTRE_AGGRESSIVE
+        else:
+            filtre_curente = FILTRE_BALANCED
 
     # --- CLEANUP: Șterge fișierele vechi pentru a evita confuzia ---
     files_to_remove = [
@@ -721,14 +756,6 @@ if __name__ == "__main__":
                 print(f"S-a șters fișierul vechi: {fname}")
             except Exception as e:
                 print(f"Nu s-a putut șterge {fname}: {e}")
-
-    # Select Filter based on profile
-    if selected_profile == "conservative":
-        filtre_curente = FILTRE_CONSERVATIVE
-    elif selected_profile == "aggressive":
-        filtre_curente = FILTRE_AGGRESSIVE
-    else:
-        filtre_curente = FILTRE_BALANCED
 
 
     # --- PASUL 1: SELECȚIA SECTOARELOR (cu caching) ---

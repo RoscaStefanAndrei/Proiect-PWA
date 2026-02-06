@@ -1,35 +1,34 @@
 {% extends 'base.html' %}
 
-{% block title %}Market News{% endblock %}
+{% block title %}Stiri{% endblock %}
+{% block header_title %}Știri Financiare{% endblock %}
 
 {% block content %}
-<div class="container py-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>Market News</h2>
-        <a href="{% url 'home' %}" class="btn btn-outline-secondary">Back to Dashboard</a>
-    </div>
-
-    {% if news %}
-    <div class="list-group shadow-sm">
-        {% for article in news %}
-        <a href="{{ article.url }}" target="_blank" class="list-group-item list-group-item-action p-4">
-            <div class="d-flex w-100 justify-content-between">
-                <h5 class="mb-1 text-primary">{{ article.title }}</h5>
-                <small class="text-muted">{{ article.published_date }}</small>
-            </div>
-            <p class="mb-1 text-secondary">
-                {{ article.description|truncatewords:30 }}
+<div class="row">
+    <div class="col-12">
+        {% if news %}
+        <div class="list-group list-group-flush">
+            {% for article in news %}
+            <a href="{{ article.url }}" target="_blank"
+                class="list-group-item list-group-item-action bg-dark-card text-white border border-secondary mb-3 rounded-3 p-4 hover-bg">
+                <div class="d-flex w-100 justify-content-between">
+                    <h5 class="mb-1 fw-bold text-white">{{ article.title }}</h5>
+                    <small class="text-muted text-nowrap ms-3">{{ article.published_date }}</small>
+                </div>
+                <p class="mb-1 text-secondary mt-2">
+                    {{ article.description|truncatewords:30 }}
+                </p>
+                <small class="text-success"><i class="fas fa-newspaper me-1"></i> {{ article.publisher.title }}</small>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="alert alert-warning bg-opacity-10 border-warning text-warning">
+            <h4 class="alert-heading h5"><i class="fas fa-exclamation-triangle me-2"></i>Nu s-au găsit știri</h4>
+            <p class="mb-0">Nu am putut prelua ultimele știri. Verifică conexiunea la internet sau încearcă mai târziu.
             </p>
-            <small class="text-muted">Source: {{ article.publisher.title }}</small>
-        </a>
-        {% endfor %}
+        </div>
+        {% endif %}
     </div>
-    {% else %}
-    <div class="alert alert-warning">
-        <h4 class="alert-heading">Unable to fetch news</h4>
-        <p>We couldn't retrieve the latest market news at this moment. Please check your internet connection or try
-            again later.</p>
-    </div>
-    {% endif %}
 </div>
 {% endblock %}

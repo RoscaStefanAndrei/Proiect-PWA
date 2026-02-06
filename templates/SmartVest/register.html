@@ -1,26 +1,26 @@
 {% extends 'base.html' %}
-
 {% block title %}Register{% endblock %}
+{% block header_title %}Înregistrare{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-md-6">
-        <div class="card shadow">
-            <div class="card-header bg-primary text-white">
-                <h3 class="mb-0">Join SmartVest</h3>
+    <div class="col-md-6 col-lg-5">
+        <div class="card bg-dark-card text-white border-secondary shadow-lg">
+            <div class="card-header bg-transparent border-bottom border-secondary text-center py-4">
+                <h3 class="mb-0 fw-bold">Alătură-te SmartVest</h3>
             </div>
-            <div class="card-body">
+            <div class="card-body p-4">
                 <form method="POST">
                     {% csrf_token %}
-                    <!-- Render form fields manually or with a library. Using as_p for simplicity but adding bootstrap classes via JS/Serverside ideally. For now raw as_p is functional. -->
                     {{ form.as_p }}
-                    <div class="d-grid gap-2">
-                        <button class="btn btn-primary" type="submit">Sign Up</button>
+                    <div class="d-grid gap-2 mt-4">
+                        <button class="btn btn-primary rounded-pill fw-bold py-2" type="submit">Creează Cont</button>
                     </div>
                 </form>
             </div>
-            <div class="card-footer text-muted text-center">
-                Already have an account? <a href="{% url 'login' %}">Login here</a>.
+            <div class="card-footer bg-transparent border-top border-secondary text-muted text-center py-3">
+                Ai deja un cont? <a href="{% url 'login' %}"
+                    class="text-success fw-bold text-decoration-none">Autentifică-te</a>.
             </div>
         </div>
     </div>

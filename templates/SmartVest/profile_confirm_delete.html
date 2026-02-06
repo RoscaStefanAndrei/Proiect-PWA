@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block title %}Șterge Profil{% endblock %}
+{% block header_title %}Confirmare Ștergere{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card bg-dark-card text-white border-danger shadow-lg text-center">
+            <div class="card-body p-5">
+                <div class="mb-4">
+                    <i class="fas fa-exclamation-triangle fa-4x text-danger mb-3"></i>
+                    <h2 class="fw-bold">Esti sigur ca vrei sa stergi profilul "{{ user.username }}"?</h2>
+                </div>
+
+                <p class="text-secondary mb-5 fs-5">
+                    Această acțiune va șterge permanent contul tău, portofoliile salvate și toate datele asociate.
+                    <span class="text-danger fw-bold">Această acțiune nu poate fi anulată.</span>
+                </p>
+
+                <form method="POST">
+                    {% csrf_token %}
+                    <div class="d-flex justify-content-center gap-3">
+                        <a href="{% url 'profile' %}" class="btn btn-outline-light rounded-pill px-4 py-2 fw-bold">
+                            Anulează
+                        </a>
+                        <button type="submit" class="btn btn-danger rounded-pill px-4 py-2 fw-bold">
+                            Da, Șterge Profilul
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

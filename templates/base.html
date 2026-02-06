@@ -7,71 +7,144 @@
     <title>SmartVest - {% block title %}{% endblock %}</title>
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom CSS -->
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 
-<body class="bg-light">
+<body class="bg-dark text-white">
 
-    <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-black mb-4">
-        <div class="container">
-            <a class="navbar-brand" href="{% url 'home' %}">SmartVest</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    {% if user.is_authenticated %}
-                    {% if user.is_superuser %}
-                    <li class="nav-item">
-                        <a class="nav-link text-warning fw-bold" href="{% url 'admin-dashboard' %}">Admin Panel</a>
-                    </li>
-                    {% endif %}
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'profile' %}">Profile
-                            {% if user.userprofile.avatar %}
-                            <img src="{{ user.userprofile.avatar.url }}" class="rounded-circle"
-                                style="width: 25px; height: 25px;">
-                            {% endif %}
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <form action="{% url 'logout' %}" method="post" class="d-inline">
-                            {% csrf_token %}
-                            <button type="submit" class="nav-link btn btn-link text-white pt-2"
-                                style="text-decoration: none;">Logout</button>
-                        </form>
-                    </li>
-                    {% else %}
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'login' %}">Login</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'register' %}">Register</a>
-                    </li>
-                    {% endif %}
-                </ul>
+    <div class="d-flex" id="wrapper">
+        <!-- Sidebar -->
+        {% if user.is_authenticated %}
+        <div class="bg-black border-end border-secondary sidebar-wrapper" id="sidebar-wrapper">
+            <a href="{% url 'home' %}" class="text-decoration-none">
+                <div
+                    class="sidebar-heading text-center py-4 primary-text fs-4 fw-bold text-uppercase border-bottom border-secondary mb-3 logo-link">
+                    <i class="fas fa-chart-line me-2 text-success"></i><span class="text-white">SmartVest</span>
+                </div>
+            </a>
+            <div class="list-group list-group-flush my-3">
+                <a href="{% url 'home' %}"
+                    class="list-group-item list-group-item-action bg-transparent text-white fw-bold mb-2 sidebar-link">
+                    <i class="fas fa-tachometer-alt me-3"></i>Dashboard
+                </a>
+                <a href="{% url 'portfolio-list' %}"
+                    class="list-group-item list-group-item-action bg-transparent text-white fw-bold mb-2 sidebar-link">
+                    <i class="fas fa-wallet me-3"></i>Portofolii
+                </a>
+                <a href="{% url 'market-news' %}"
+                    class="list-group-item list-group-item-action bg-transparent text-white fw-bold mb-2 sidebar-link">
+                    <i class="fas fa-newspaper me-3"></i>Stiri
+                </a>
+                <a href="{% url 'run-analysis' %}"
+                    class="list-group-item list-group-item-action bg-transparent text-white fw-bold mb-2 sidebar-link">
+                    <i class="fas fa-search-dollar me-3"></i>Analiza Noua
+                </a>
+                <a href="{% url 'presets-list' %}"
+                    class="list-group-item list-group-item-action bg-transparent text-white fw-bold mb-2 sidebar-link">
+                    <i class="fas fa-bookmark me-3"></i>Preset-uri Salvate
+                </a>
+                {% if user.is_superuser %}
+                <a href="{% url 'admin-dashboard' %}"
+                    class="list-group-item list-group-item-action bg-transparent text-white fw-bold mb-2 sidebar-link">
+                    <i class="fas fa-user-shield me-3"></i>Admin Panel
+                </a>
+                {% endif %}
+            </div>
+
+            <div class="mt-auto p-3 border-top border-secondary">
+                <form action="{% url 'logout' %}" method="post">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-outline-danger w-100 border-0 text-start">
+                        <i class="fas fa-sign-out-alt me-3"></i>Logout
+                    </button>
+                </form>
             </div>
         </div>
-    </nav>
-
-    <!-- Main Content -->
-    <div class="container">
-        <!-- Messages -->
-        {% if messages %}
-        {% for message in messages %}
-        <div class="alert alert-{{ message.tags }}">
-            {{ message }}
-        </div>
-        {% endfor %}
         {% endif %}
+        <!-- /#sidebar-wrapper -->
 
-        {% block content %}{% endblock %}
+        <!-- Page Content -->
+        <div id="page-content-wrapper" class="w-100">
+            <!-- Top Navigation -->
+            <nav class="navbar navbar-expand-lg navbar-dark bg-transparent py-4 px-4">
+                <div class="d-flex align-items-center">
+                    <h2 class="fs-2 m-0 text-white fw-bold">{% block header_title %}Meniu principal{% endblock %}</h2>
+                </div>
+
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+                    data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent"
+                    aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                    <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
+                        <li class="nav-item">
+                            <a href="{% url 'profile' %}" class="text-decoration-none">
+                                <div
+                                    class="d-flex align-items-center text-white bg-dark-card rounded-pill px-3 py-2 ms-3 border border-secondary component-bg">
+                                    {% if user.is_authenticated %}
+                                    <div class="me-3 text-end d-none d-md-block">
+                                        <span class="d-block fw-bold text-white">{{ user.username }}</span>
+                                        <span class="d-block small text-muted">Personal • USD</span>
+                                    </div>
+                                    {% if user.userprofile.avatar %}
+                                    <img src="{{ user.userprofile.avatar.url }}"
+                                        class="rounded-circle border border-2 border-success"
+                                        style="width: 40px; height: 40px; object-fit: cover;">
+                                    {% else %}
+                                    <div class="rounded-circle bg-secondary d-flex justify-content-center align-items-center text-white fw-bold"
+                                        style="width: 40px; height: 40px;">
+                                        {{ user.username|slice:":1"|upper }}
+                                    </div>
+                                    {% endif %}
+                                    {% else %}
+                                    <a href="{% url 'login' %}"
+                                        class="btn btn-sm btn-success rounded-pill px-4">Login</a>
+                                    {% endif %}
+                                </div>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+
+            <div class="container-fluid px-4 pb-5">
+                <!-- Messages -->
+                {% if messages %}
+                <div class="row mb-3">
+                    <div class="col-md-10 mx-auto">
+                        {% for message in messages %}
+                        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                {% block content %}{% endblock %}
+            </div>
+        </div>
     </div>
+    <!-- /#wrapper -->
 
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        var el = document.getElementById("wrapper");
+        var toggleButton = document.getElementById("menu-toggle");
+
+        if (toggleButton) {
+            toggleButton.onclick = function () {
+                el.classList.toggle("toggled");
+            };
+        }
+    </script>
 </body>
 
 </html>

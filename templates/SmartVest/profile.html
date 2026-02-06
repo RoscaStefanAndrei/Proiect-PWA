@@ -1,36 +1,124 @@
 {% extends 'base.html' %}
-
-{% block title %}My Profile{% endblock %}
+{% block title %}Profilul Meu{% endblock %}
+{% block header_title %}Setări Profil{% endblock %}
 
 {% block content %}
 <div class="row">
-    <div class="col-md-4">
-        <div class="card text-center shadow-sm">
-            <div class="card-body">
+    <!-- User Info Card -->
+    <div class="col-md-4 mb-4">
+        <div class="card bg-dark-card text-white border-secondary shadow-sm text-center p-4">
+            <div class="mb-3">
                 {% if user.userprofile.avatar %}
-                <img src="{{ user.userprofile.avatar.url }}" class="rounded-circle img-thumbnail mb-3"
-                    style="width: 150px; height: 150px; object-fit: cover;">
+                <img src="{{ user.userprofile.avatar.url }}" class="rounded-circle border border-2 border-success p-1"
+                    style="width: 120px; height: 120px; object-fit: cover;">
+                {% else %}
+                <div class="rounded-circle bg-secondary d-inline-flex align-items-center justify-content-center text-white fw-bold mx-auto"
+                    style="width: 120px; height: 120px; font-size: 3rem;">
+                    {{ user.username|slice:":1"|upper }}
+                </div>
                 {% endif %}
-                <h4>{{ user.username }}</h4>
-                <p class="text-muted">{{ user.email }}</p>
-                <p>{{ user.userprofile.bio }}</p>
+            </div>
+            <h4 class="fw-bold mb-1">{{ user.username }}</h4>
+            <p class="text-secondary small mb-3">{{ user.email }}</p>
+            {% if user.userprofile.bio %}
+            <p class="text-light fst-italic">"{{ user.userprofile.bio }}"</p>
+            {% endif %}
+            <div class="badge bg-success bg-opacity-25 text-success rounded-pill px-3 py-2 border border-success">
+                Cont Activ
             </div>
         </div>
     </div>
 
+    <!-- Update Form -->
     <div class="col-md-8">
-        <div class="card shadow-sm">
-            <div class="card-header">
-                Update Profile Info
+        <div class="card bg-dark-card text-white border-secondary shadow-sm mb-4">
+            <div class="card-header bg-transparent border-bottom border-secondary py-3">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-user-edit me-2"></i>Editează Informațiile</h5>
             </div>
-            <div class="card-body">
+            <div class="card-body p-4">
                 <form method="POST" enctype="multipart/form-data">
                     {% csrf_token %}
-                    {{ p_form.as_p }}
-                    <button class="btn btn-success" type="submit">Update Profile</button>
+                    <div class="mb-3">
+                        <label class="form-label text-secondary fw-bold">Username</label>
+                        {{ u_form.username }}
+                        <!-- Add custom styling to rendered inputs via JS or widget tweaks if needed, 
+                              but for now standard django rendering will be functional though plain. -->
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label text-secondary fw-bold">Email</label>
+                        {{ u_form.email }}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label text-secondary fw-bold">Avatar</label>
+                        {{ p_form.avatar }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label text-secondary fw-bold">Bio</label>
+                        {{ p_form.bio }}
+                    </div>
+
+                    <div class="d-flex justify-content-end">
+                        <button class="btn btn-primary rounded-pill px-4 fw-bold" type="submit">
+                            Salvează Modificările
+                        </button>
+                    </div>
                 </form>
+            </div>
+        </div>
+
+        <!-- Delete Account Section -->
+        <div class="card bg-dark-card text-white border-danger shadow-sm">
+            <div class="card-header bg-transparent border-bottom border-danger py-3">
+                <h5 class="mb-0 fw-bold text-danger"><i class="fas fa-exclamation-triangle me-2"></i>Zonă Periculoasă
+                </h5>
+            </div>
+            <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="fw-bold">Șterge Contul</h6>
+                        <p class="text-secondary small mb-0">Această acțiune este ireversibilă. Toate datele tale vor fi
+                            pierdute.</p>
+                    </div>
+                    <a href="{% url 'delete-profile' %}" class="btn btn-outline-danger rounded-pill fw-bold">
+                        Șterge Profilul
+                    </a>
+                </div>
             </div>
         </div>
     </div>
 </div>
+
+<!-- Styling tweak for form inputs rendered by Django to match dark theme -->
+<style>
+    /* Targeting standard inputs */
+    input[type="text"],
+    input[type="email"],
+    input[type="file"],
+    textarea {
+        background-color: #131622 !important;
+        border: 1px solid #2d3246 !important;
+        color: white !important;
+        border-radius: 6px;
+        padding: 8px 12px;
+        width: 100%;
+        display: block;
+    }
+
+    input[type="text"]:focus,
+    input[type="email"]:focus,
+    textarea:focus {
+        outline: none;
+        border-color: #28a745 !important;
+        box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.25);
+    }
+
+    /* Hide current help text or make it readable */
+    .helptext {
+        font-size: 0.8em;
+        color: #6c757d;
+        display: block;
+        margin-top: 5px;
+    }
+</style>
 {% endblock %}

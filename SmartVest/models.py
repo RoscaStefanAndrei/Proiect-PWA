@@ -28,3 +28,17 @@ class AnalysisHistory(models.Model):
     
     def __str__(self):
         return f"Analysis run by {self.user.username} on {self.date_run}"
+
+class FilterPreset(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True, default='')  # User notes about this preset
+    filters = models.JSONField(default=dict)  # Stores Finviz filter key-value pairs
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.name} - {self.user.username}"
