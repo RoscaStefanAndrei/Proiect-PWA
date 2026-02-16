@@ -1,0 +1,286 @@
+{% extends 'base.html' %}
+
+{% block title %}Unicorn Scanner{% endblock %}
+{% block header_title %}🦄 Unicorn Scanner{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- Main Content -->
+    <div class="col-lg-8">
+        <!-- Scan Control Card -->
+        <div class="card bg-dark border-secondary mb-4">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="card-title text-white mb-1">
+                            <i class="fas fa-search text-info me-2"></i>Scanner Unicorni
+                        </h5>
+                        <p class="text-muted small mb-0">
+                            Găsește acțiuni cu potențial de creștere 20-30% în 3-6 luni
+                        </p>
+                    </div>
+                    <form method="post">
+                        {% csrf_token %}
+                        <button type="submit" name="run_scan" class="btn btn-primary btn-lg">
+                            <i class="fas fa-rocket me-2"></i>Rulează Scanare
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Error Message -->
+        {% if error_message %}
+        <div class="alert alert-warning alert-dismissible fade show" role="alert">
+            <i class="fas fa-exclamation-triangle me-2"></i>{{ error_message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endif %}
+
+        <!-- Results Table -->
+        {% if scan_results %}
+        <div class="card bg-dark border-secondary">
+            <div class="card-header bg-dark border-secondary">
+                <h5 class="mb-0 text-white">
+                    <i class="fas fa-chart-line text-success me-2"></i>
+                    Candidați Unicorn ({{ scan_results|length }} găsiți)
+                </h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-dark table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Ticker</th>
+                                <th>Companie</th>
+                                <th>Preț ($)</th>
+                                <th>RSI</th>
+                                <th>Vol. Ratio</th>
+                                <th>% din 52W High</th>
+                                <th>Scor 🦄</th>
+                                <th>Acțiune</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for stock in scan_results %}
+                            <tr>
+                                <td>
+                                    <span class="fw-bold text-info">{{ stock.Ticker }}</span>
+                                </td>
+                                <td class="text-truncate" style="max-width: 200px;">
+                                    {{ stock.Company|default:"-" }}
+                                </td>
+                                <td>${{ stock.Price }}</td>
+                                <td>
+                                    {% if stock.RSI %}
+                                    <span
+                                        class="badge {% if stock.RSI >= 50 and stock.RSI <= 75 %}bg-success{% else %}bg-secondary{% endif %}">{{
+                                        stock.RSI }}</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">-</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if stock.Volume_Ratio >= 1.5 %}
+                                    <span class="badge bg-success">{{ stock.Volume_Ratio }}x</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">{{ stock.Volume_Ratio }}x</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if stock.Pct_of_52W >= 90 %}
+                                    <span class="badge bg-success">{{ stock.Pct_of_52W }}%</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">{{ stock.Pct_of_52W }}%</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if stock.Unicorn_Score >= 3 %}
+                                    <span class="badge bg-warning text-dark fs-6">🦄 {{ stock.Unicorn_Score }}/3</span>
+                                    {% elif stock.Unicorn_Score >= 2 %}
+                                    <span class="badge bg-info fs-6">{{ stock.Unicorn_Score }}/3</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary fs-6">{{ stock.Unicorn_Score }}/3</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if stock.Ticker in watched_tickers %}
+                                    <span class="badge bg-success">
+                                        <i class="fas fa-eye me-1"></i>În Watchlist
+                                    </span>
+                                    {% else %}
+                                    <form method="post" action="{% url 'add-to-watchlist' stock.Ticker %}"
+                                        class="d-inline">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-sm btn-outline-primary">
+                                            <i class="fas fa-plus me-1"></i>Watch
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="card bg-dark border-secondary">
+            <div class="card-body text-center py-5">
+                <i class="fas fa-horse-head fa-4x text-muted mb-3"></i>
+                <h5 class="text-muted">Nicio scanare efectuată</h5>
+                <p class="text-muted">Apasă pe "Rulează Scanare" pentru a căuta unicorni 🦄</p>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Legend -->
+        <div class="card bg-dark border-secondary mt-4">
+            <div class="card-body">
+                <h6 class="text-white mb-3"><i class="fas fa-info-circle me-2"></i>Legendă Indicatori</h6>
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="d-flex align-items-center mb-2">
+                            <span class="badge bg-success me-2">RSI</span>
+                            <small class="text-muted">50-75: Bullish, nu overbought</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="d-flex align-items-center mb-2">
+                            <span class="badge bg-success me-2">Vol.</span>
+                            <small class="text-muted">≥1.5x: Volume peste medie</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="d-flex align-items-center mb-2">
+                            <span class="badge bg-success me-2">52W</span>
+                            <small class="text-muted">≥90%: Aproape de maxim</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sidebar - Watchlist -->
+    <div class="col-lg-4">
+        <div class="card bg-dark border-secondary">
+            <div class="card-header bg-dark border-secondary">
+                <h5 class="mb-0 text-white">
+                    <i class="fas fa-eye text-warning me-2"></i>Watchlist
+                </h5>
+            </div>
+            <div class="card-body p-0">
+                {% if watchlist %}
+                <div class="table-responsive">
+                    <table class="table table-dark table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Ticker</th>
+                                <th>Entry</th>
+                                <th>Current</th>
+                                <th>Daily P/L</th>
+                                <th>Open P/L</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in watchlist %}
+                            <tr>
+                                <td>
+                                    <span class="fw-bold text-info">{{ item.ticker }}</span>
+                                    {% if item.company_name %}
+                                    <br><small class="text-muted text-truncate"
+                                        style="max-width: 80px; display: inline-block;">{{ item.company_name }}</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.entry_price %}
+                                    <small>${{ item.entry_price }}</small>
+                                    {% else %}
+                                    <small class="text-muted">-</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.current_price %}
+                                    <small class="fw-bold">${{ item.current_price }}</small>
+                                    {% else %}
+                                    <small class="text-muted">-</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.daily_pl != None %}
+                                    {% if item.daily_pl >= 0 %}
+                                    <small class="text-success">
+                                        <i class="fas fa-caret-up me-1"></i>+${{ item.daily_pl }}
+                                        <br><span class="text-success">(+{{ item.daily_pl_pct }}%)</span>
+                                    </small>
+                                    {% else %}
+                                    <small class="text-danger">
+                                        <i class="fas fa-caret-down me-1"></i>${{ item.daily_pl }}
+                                        <br><span class="text-danger">({{ item.daily_pl_pct }}%)</span>
+                                    </small>
+                                    {% endif %}
+                                    {% else %}
+                                    <small class="text-muted">-</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.open_pl != None %}
+                                    {% if item.open_pl >= 0 %}
+                                    <small class="text-success fw-bold">
+                                        <i class="fas fa-arrow-up me-1"></i>+${{ item.open_pl }}
+                                        <br><span class="badge bg-success">+{{ item.open_pl_pct }}%</span>
+                                    </small>
+                                    {% else %}
+                                    <small class="text-danger fw-bold">
+                                        <i class="fas fa-arrow-down me-1"></i>${{ item.open_pl }}
+                                        <br><span class="badge bg-danger">{{ item.open_pl_pct }}%</span>
+                                    </small>
+                                    {% endif %}
+                                    {% else %}
+                                    <small class="text-muted">-</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <form method="post" action="{% url 'remove-from-watchlist' item.pk %}">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Șterge">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="fas fa-list fa-2x text-muted mb-2"></i>
+                    <p class="text-muted mb-0">Watchlist-ul este gol</p>
+                    <small class="text-muted">Adaugă acțiuni din rezultatele scanării</small>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Info Card -->
+        <div class="card bg-dark border-info mt-4">
+            <div class="card-body">
+                <h6 class="text-info"><i class="fas fa-lightbulb me-2"></i>Ce sunt Unicornii?</h6>
+                <p class="text-muted small mb-0">
+                    Unicornii sunt acțiuni cu potențial de creștere rapidă (20-30% în 3-6 luni).
+                    Scannerul identifică companii cu:
+                </p>
+                <ul class="text-muted small mt-2 mb-0">
+                    <li>Momentum bullish (RSI 50-75)</li>
+                    <li>Volum crescut (peste 1.5x medie)</li>
+                    <li>Aproape de maximul pe 52 săptămâni</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

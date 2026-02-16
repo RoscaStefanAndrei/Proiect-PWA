@@ -1,35 +1,59 @@
+"""
+SmartVest Selection Algorithm
+==============================
+Pipeline profesional pentru selecția acțiunilor și optimizarea portofoliului.
+
+Pipeline:
+    Pasul 1: Identificarea sectoarelor profitabile (cu caching TTL)
+    Pasul 2: Screening-ul companiilor (cu paginare manuală)
+    Pasul 3: Comparația cu piața (vs. S&P 500 pe ~50 zile)
+    Pasul 4: Filtrul OBV (On-Balance Volume)
+    Pasul 5: Puterea relativă a industriei
+    Pasul 6: Optimizarea portofoliului (GMV / Max Sharpe — în funcție de profil)
+"""
+
 import pandas as pd
 import time
 import os
 import argparse
 import sys
+import json
 import yfinance as yf
 import datetime
 import pandas_ta as ta
-from finvizfinance.group.performance import Performance
-from finvizfinance.screener.overview import Overview
-from finvizfinance.screener.performance import Performance
-from pypfopt import risk_models, EfficientFrontier
-from pypfopt import plotting  # Opțional, pentru vizualizare
-import matplotlib.pyplot as plt  # Pentru a desena graficul
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')  # Non-interactive backend for server environments
+import matplotlib.pyplot as plt
+from finvizfinance.group.performance import Performance as GroupPerformance
+from finvizfinance.screener.overview import Overview
+from finvizfinance.screener.performance import Performance as ScreenerPerformance
+from pypfopt import risk_models, expected_returns, EfficientFrontier
+from pypfopt import plotting
 
-# === CONSTANTE PENTRU SCREENING (CORECTATE) ===
-# === CONSTANTE PENTRU SCREENING (CONFIGURABILE) ===
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+
+CACHE_TTL_DAYS = 7  # Sector cache expiry in days
+MIN_TRADING_DAYS_SPY = 30  # Minimum trading days for SPY comparison
+TARGET_TRADING_DAYS_SPY = 50  # Target trading days for SPY comparison
+
+# === FILTER PROFILES ===
 FILTRE_BALANCED = {
     # === 1. Descriptive ===
     "Market Cap.": "+Large (over $10bln)",
     "Average Volume": "Over 2M",
     "Relative Volume": "Over 1",
     "Dividend Yield": "Positive (>0%)",
-    # === 2. Fundamental  ===
+    # === 2. Fundamental ===
     "Net Profit Margin": "Positive (>0%)",
     "Operating Margin": "Positive (>0%)",
     "EPS growthnext 5 years": "Positive (>0%)",
     "EPS growthnext year": "Positive (>0%)",
     "EPS growththis year": "Positive (>0%)",
     "Return on Equity": "Over +10%",
-    # === 3. Technical  ===
+    # === 3. Technical ===
     "200-Day Simple Moving Average": "Price above SMA200",
 }
 
@@ -37,30 +61,38 @@ FILTRE_CONSERVATIVE = {
     # === 1. Descriptive ===
     "Market Cap.": "+Large (over $10bln)",
     "Average Volume": "Over 1M",
-    "Dividend Yield": "High (>5%)", 
-    # === 2. Fundamental  ===
+    "Dividend Yield": "Positive (>0%)",
+    # === 2. Fundamental ===
     "Net Profit Margin": "Positive (>0%)",
     "Operating Margin": "Positive (>0%)",
-    "Return on Equity": "Over +15%",
-    # === 3. Technical  ===
+    "Return on Equity": "Over +10%",
+    "Debt/Equity": "Under 1",
+    # === 3. Technical ===
     "200-Day Simple Moving Average": "Price above SMA200",
 }
 
 FILTRE_AGGRESSIVE = {
     # === 1. Descriptive ===
-    "Market Cap.": "+Mid (over $2bln)", 
-    "Average Volume": "Over 500K",
-    # === 2. Fundamental  ===
-    # Using only keys we are confident about for now to avoid 'Same Value' crashes
+    "Market Cap.": "+Small (over $300mln)",
+    "Average Volume": "Over 200K",
+    # === 2. Fundamental ===
     "EPS growthnext 5 years": "Over 20%",
-    "EPS growthnext year": "Positive (>0%)",
-    "EPS growththis year": "Positive (>0%)",
-    # === 3. Technical  ===
+    "EPS growthnext year": "Over 10%",
+    "EPS growththis year": "Over 10%",
+    "Return on Equity": "Over +15%",
+    # === 3. Technical ===
     "200-Day Simple Moving Average": "Price above SMA200",
 }
 
 # Default is Balanced
 FILTRE_DE_BAZA = FILTRE_BALANCED
+
+# Profile name → filter dict mapping
+PROFILE_FILTERS = {
+    "conservative": FILTRE_CONSERVATIVE,
+    "balanced": FILTRE_BALANCED,
+    "aggressive": FILTRE_AGGRESSIVE,
+}
 
 
 def get_sectoare_profitabile():
@@ -94,7 +126,7 @@ def get_sectoare_profitabile():
 
         # --- APEL 2: Obținerea Performanței ---
         print("Pas 2/4: Se descarcă Ticker și Performanța (poate dura 6-7 min)...")
-        screener_perf = Performance()
+        screener_perf = ScreenerPerformance()
         df_performanta = screener_perf.screener_view(
             columns=["No.", "Ticker", "Perf Half", "Perf Year"]
         )
@@ -258,9 +290,7 @@ def compara_cu_piata(tickere_de_filtrat):
         f"\n===== PASUL 3: Se compară {len(tickere_de_filtrat)} tickere cu S&P 500 (SPY) ====="
     )
 
-    # 1. Definirea perioadei de 50 de zile (de tranzacționare)
-    # Cerem 100 de zile calendaristice pentru a fi siguri că prindem 50 zile de tranzacționare
-    zile_in_urma = 100
+    zile_in_urma = 100  # Calendar days to cover ~50 trading days
     end_date = datetime.date.today()
     start_date = end_date - datetime.timedelta(days=zile_in_urma)
 
@@ -272,18 +302,24 @@ def compara_cu_piata(tickere_de_filtrat):
         print(
             f"Se descarcă datele de preț pentru {len(tickere_de_descarcat)} simboluri..."
         )
-        # Folosim 'Adj Close' (Prețul de Închidere Ajustat) pentru cea mai corectă comparație
         data = yf.download(tickere_de_descarcat, start=start_date, end=end_date)[
             "Close"
         ]
-        # Păstrăm doar ultimele 50 de zile de tranzacționare
-        data_50d = data.tail(50)
+        # Păstrăm ultimele ~50 de zile de tranzacționare (sau câte sunt disponibile)
+        data_50d = data.tail(TARGET_TRADING_DAYS_SPY)
 
-        if data_50d.empty or len(data_50d) < 50:
+        if data_50d.empty or len(data_50d) < MIN_TRADING_DAYS_SPY:
             print(
-                f"Atenție: Nu s-au putut descărca suficiente date (50 zile). Found {len(data_50d)}. Se oprește pasul 3."
+                f"Atenție: Date insuficiente ({len(data_50d)} zile, minim {MIN_TRADING_DAYS_SPY}). "
+                f"Se oprește pasul 3."
             )
-            return []  # Returnăm o listă goală
+            return []
+
+        if len(data_50d) < TARGET_TRADING_DAYS_SPY:
+            print(
+                f"    -> Notă: Se folosesc {len(data_50d)} zile (ținta: {TARGET_TRADING_DAYS_SPY}). "
+                f"Datele sunt suficiente pentru analiză."
+            )
 
     except Exception as e:
         print(f"Eroare la descărcarea datelor de pe yfinance: {e}")
@@ -308,7 +344,7 @@ def compara_cu_piata(tickere_de_filtrat):
     # drop('SPY') este pentru a elimina SPY din lista de acțiuni
     performanta_actiuni = date_normalizate.drop(columns="SPY").iloc[-1]
 
-    print(f"Performanța SPY în 50 de zile: {performanta_spy:.2%}")
+    print(f"Performanța SPY în {len(data_50d)} zile: {performanta_spy:.2%}")
 
     # 5. Filtrarea
     # Selectăm doar acțiunile (indexul) a căror performanță e mai mare decât SPY
@@ -441,7 +477,7 @@ def filtreaza_puterea_industriei(df_companii_pasul_4):
     # 2. Obținem datele de la Finviz
     try:
         print("  -> Se descarcă datele de performanță...")
-        client_performanta = Performance()
+        client_performanta = GroupPerformance()
         df_indecsi = client_performanta.screener(group_by="Index")
         df_toate_industriile = client_performanta.screener(group_by="Industry")
 
@@ -590,21 +626,24 @@ def aplica_reguli_redistribuire(weights_dict, min_prag=0.02, max_prag=0.70):
     return seria.to_dict()
 
 
-def calculeaza_portofoliu_gmv(tickere_finale):
+def calculeaza_portofoliu(tickere_finale, profile_type="balanced"):
     """
-    PASUL 6: Calculează alocarea optimă pentru Varianță Minimă Globală (GMV).
+    PASUL 6: Calculează alocarea optimă a portofoliului în funcție de profilul investitorului.
 
-    MODIFICĂRI:
-    1. Optimizatorul rulează LIBER (0-100%).
-    2. Se aplică POST-PROCESARE pentru regulile de 2% și 70%.
+    Strategii:
+    - Conservative: Global Minimum Variance (GMV) — minimizează volatilitatea
+    - Balanced: Max Sharpe Ratio cu fallback GMV — cel mai bun raport risc/randament
+    - Aggressive: Max Sharpe Ratio — maximizează randamentul ajustat la risc
+
+    Post-procesare: regulile de 2% (min) și 70% (max) per acțiune.
     """
-    print(f"\n===== PASUL 6: Optimizare Portofoliu GMV (Risc Minim) =====")
+    print(f"\n===== PASUL 6: Optimizare Portofoliu ({profile_type.upper()}) =====")
 
     if not tickere_finale:
         print("Nu s-au primit tickere pentru optimizare.")
         return None
 
-    # 1. Colectarea Datelor
+    # 1. Colectarea Datelor (3 ani de istoric)
     zile_in_urma = 365 * 3
     start_date = datetime.date.today() - datetime.timedelta(days=zile_in_urma)
 
@@ -622,33 +661,79 @@ def calculeaza_portofoliu_gmv(tickere_finale):
             print("Eroare: Nu există date comune suficiente.")
             return None
 
+        # Handle single-ticker case (Series → DataFrame)
+        if isinstance(df_preturi, pd.Series):
+            df_preturi = df_preturi.to_frame()
+
     except Exception as e:
         print(f"Eroare la descărcarea datelor istorice: {e}")
         return None
 
-    # 2. Calcularea Randamentelor
-    print("  -> Se calculează Randamentele Zilnice...")
-    df_randamente = df_preturi.pct_change()
-    df_randamente = df_randamente.replace([np.inf, -np.inf], np.nan)
-    df_randamente = df_randamente.dropna()
-
-    # 3. Calcularea Matricei de Covarianță
-    print("  -> Se calculează Matricea de Covarianță (cu Fallback)...")
+    # 2. Calcularea Matricei de Covarianță (din prețuri — pypfopt calculează intern randamentele)
+    print("  -> Se calculează Matricea de Covarianță (Ledoit-Wolf Shrinkage)...")
     try:
-        S = risk_models.CovarianceShrinkage(df_randamente).ledoit_wolf()
-    except:
-        S = risk_models.sample_cov(df_randamente)
+        S = risk_models.CovarianceShrinkage(df_preturi).ledoit_wolf()
+    except Exception:
+        print("  -> Fallback: Se folosește matricea de covarianță sample.")
+        S = risk_models.sample_cov(df_preturi)
 
-    # 4. Optimizarea MATEMATICĂ (Liberă)
-    print("  -> Se optimizează matematic (fără constrângeri inițiale)...")
+    # 3. Optimizare în funcție de profil
+    alocari_brute = None
 
-    # AICI E SCHIMBAREA: Lăsăm limitele standard (0, 1)
-    # Lăsăm matematica să găsească optimul pur mai întâi.
-    ef = EfficientFrontier(None, S, weight_bounds=(0, 1))
-    ef.min_volatility()
-    alocari_brute = ef.clean_weights()
+    if profile_type == "conservative":
+        # GMV: Minimizare volatilitate pură
+        print("  -> Strategie: Global Minimum Variance (GMV)")
+        try:
+            ef = EfficientFrontier(None, S, weight_bounds=(0, 1))
+            ef.min_volatility()
+            alocari_brute = ef.clean_weights()
+        except Exception as e:
+            print(f"  -> Eroare la optimizare GMV: {e}")
+            return None
 
-    # 5. Aplicarea Regulilor de Business (2% - 70% cu Redistribuire)
+    elif profile_type == "aggressive":
+        # Max Sharpe: Maximizare randament ajustat la risc
+        print("  -> Strategie: Max Sharpe Ratio")
+        try:
+            mu = expected_returns.mean_historical_return(df_preturi)
+            ef = EfficientFrontier(mu, S, weight_bounds=(0, 1))
+            ef.max_sharpe()
+            alocari_brute = ef.clean_weights()
+        except Exception as e:
+            print(f"  -> Max Sharpe a eșuat ({e}). Fallback: GMV.")
+            try:
+                ef = EfficientFrontier(None, S, weight_bounds=(0, 1))
+                ef.min_volatility()
+                alocari_brute = ef.clean_weights()
+            except Exception as e2:
+                print(f"  -> Eroare la fallback GMV: {e2}")
+                return None
+
+    else:  # balanced
+        # Max Sharpe cu fallback GMV
+        print("  -> Strategie: Max Sharpe Ratio (cu fallback GMV)")
+        try:
+            mu = expected_returns.mean_historical_return(df_preturi)
+            ef = EfficientFrontier(mu, S, weight_bounds=(0, 1))
+            ef.max_sharpe()
+            alocari_brute = ef.clean_weights()
+            print("  -> Max Sharpe: succes.")
+        except Exception as e:
+            print(f"  -> Max Sharpe a eșuat ({e}). Se aplică GMV ca fallback.")
+            try:
+                ef = EfficientFrontier(None, S, weight_bounds=(0, 1))
+                ef.min_volatility()
+                alocari_brute = ef.clean_weights()
+                print("  -> Fallback GMV: succes.")
+            except Exception as e2:
+                print(f"  -> Eroare la fallback GMV: {e2}")
+                return None
+
+    if alocari_brute is None:
+        print("  -> Optimizarea nu a produs rezultate.")
+        return None
+
+    # 4. Post-procesare: regulile de business (2% min, 70% max)
     print(
         "  -> Se aplică regulile de redistribuire (eliminare < 2%, plafonare > 70%)..."
     )
@@ -656,8 +741,14 @@ def calculeaza_portofoliu_gmv(tickere_finale):
         alocari_brute, min_prag=0.02, max_prag=0.70
     )
 
-    # 6. Afișarea Rezultatelor
-    print("\n=== REZULTAT FINAL: ALOCARE PORTOFOLIU GMV (Ajustat) ===")
+    # 5. Afișarea Rezultatelor
+    strategy_name = {
+        "conservative": "GMV (Risc Minim)",
+        "balanced": "Max Sharpe / GMV",
+        "aggressive": "Max Sharpe (Randament Maxim)",
+    }.get(profile_type, profile_type)
+
+    print(f"\n=== REZULTAT: ALOCARE PORTOFOLIU — {strategy_name} ===")
 
     seria_alocari = pd.Series(alocari_finale)
     alocari_reale = seria_alocari[seria_alocari > 0].sort_values(ascending=False)
@@ -665,7 +756,7 @@ def calculeaza_portofoliu_gmv(tickere_finale):
     print("\nProcentaj de investit în fiecare acțiune:")
     print(alocari_reale.apply(lambda x: f"{x*100:.2f}%").to_string())
 
-    # --- Vizualizare Pie Chart ---
+    # 6. Vizualizare Pie Chart (salvat în fișier pentru compatibilitate server)
     try:
         plt.figure(figsize=(9, 9))
         plt.pie(
@@ -680,336 +771,327 @@ def calculeaza_portofoliu_gmv(tickere_finale):
         fig = plt.gcf()
         fig.gca().add_artist(centre_circle)
 
-        plt.title("Alocare Portofoliu GMV\n(Ajustat: Min 2%, Max 70%)")
+        plt.title(f"Alocare Portofoliu — {strategy_name}\n(Min 2%, Max 70%)")
         plt.tight_layout()
-        plt.show()
+        plt.savefig("portofoliu_chart.png", dpi=150, bbox_inches="tight")
+        plt.close()
+        print("  -> Graficul a fost salvat în 'portofoliu_chart.png'.")
     except Exception as e:
         print(f"Nu s-a putut genera graficul: {e}")
 
     return alocari_finale
 
 
-# --- Execuția codului (cu logică de Caching, pipeline corectat și salvare intermediară) ---
-# --- Execuția codului (cu logică de Caching, pipeline corectat și salvare intermediară) ---
-if __name__ == "__main__":
-    # --- PARSING ARGUMENTE ---
-    parser = argparse.ArgumentParser(description="SmartVest Selection Algorithm")
-    parser.add_argument("--profile", type=str, default="balanced", choices=["conservative", "balanced", "aggressive"], help="Investment profile")
-    parser.add_argument("--budget", type=float, default=10000.0, help="Investment budget")
-    parser.add_argument("--custom-filters", type=str, default=None, help="Custom filters as JSON string")
-    parser.add_argument("--custom-filters-file", type=str, default=None, help="Path to JSON file with custom filters")
-    
-    args = parser.parse_args()
-    
-    selected_profile = args.profile
-    BUGET_TOTAL = args.budget
-    custom_filters_json = getattr(args, 'custom_filters', None)
-    custom_filters_file = getattr(args, 'custom_filters_file', None)
-    
-    # Check if using custom filters from file (preferred method)
-    if custom_filters_file:
-        import json
-        try:
-            with open(custom_filters_file, 'r', encoding='utf-8') as f:
-                filtre_curente = json.load(f)
-            print(f"Running Analysis with CUSTOM FILTERS (from file) and Budget: ${BUGET_TOTAL}")
-            print(f"Custom filters: {filtre_curente}")
-        except Exception as e:
-            print(f"Error reading custom filters file: {e}")
-            print("Falling back to balanced profile...")
-            filtre_curente = FILTRE_BALANCED
-    # Check if using custom filters from JSON string
-    elif custom_filters_json:
-        import json
-        try:
-            filtre_curente = json.loads(custom_filters_json)
-            print(f"Running Analysis with CUSTOM FILTERS and Budget: ${BUGET_TOTAL}")
-            print(f"Custom filters: {filtre_curente}")
-        except json.JSONDecodeError as e:
-            print(f"Error parsing custom filters JSON: {e}")
-            print("Falling back to balanced profile...")
-            filtre_curente = FILTRE_BALANCED
-    else:
-        print(f"Running Analysis with Profile: {selected_profile.upper()} and Budget: ${BUGET_TOTAL}")
-        # Select Filter based on profile
-        if selected_profile == "conservative":
-            filtre_curente = FILTRE_CONSERVATIVE
-        elif selected_profile == "aggressive":
-            filtre_curente = FILTRE_AGGRESSIVE
-        else:
-            filtre_curente = FILTRE_BALANCED
+# ============================================================================
+# PIPELINE PRINCIPAL (IMPORTABIL)
+# ============================================================================
 
-    # --- CLEANUP: Șterge fișierele vechi pentru a evita confuzia ---
+def run_full_pipeline(profile_type="balanced", budget=10000.0, filters_dict=None):
+    """
+    Rulează întreg pipeline-ul de selecție a acțiunilor.
+
+    Args:
+        profile_type: "conservative", "balanced", sau "aggressive"
+        budget: Bugetul total de investit (USD)
+        filters_dict: Dict custom de filtre Finviz (opțional, override profil)
+
+    Returns:
+        dict cu cheile:
+            - 'success': bool
+            - 'sectoare': list
+            - 'companii_filtrate': DataFrame
+            - 'companii_finale': DataFrame
+            - 'alocari': dict (ticker -> pondere)
+            - 'plan_investitii': DataFrame
+            - 'profile_type': str
+            - 'budget': float
+            - 'error': str (dacă success=False)
+    """
+    result = {
+        'success': False,
+        'sectoare': [],
+        'companii_filtrate': pd.DataFrame(),
+        'companii_finale': pd.DataFrame(),
+        'alocari': None,
+        'plan_investitii': pd.DataFrame(),
+        'profile_type': profile_type,
+        'budget': budget,
+        'error': None,
+    }
+
+    # Selectarea filtrelor
+    if filters_dict is None:
+        filtre_curente = PROFILE_FILTERS.get(profile_type, FILTRE_BALANCED)
+    else:
+        filtre_curente = filters_dict
+
+    print(f"\nRunning Analysis with Profile: {profile_type.upper()} and Budget: ${budget:,.2f}")
+
+    # --- CLEANUP: Șterge fișierele vechi ---
     files_to_remove = [
         "alocare_finala_portofoliu.csv",
         "companii_selectie_finala.csv",
-        "pasul_2_companii_fundamentale.csv", 
+        "pasul_2_companii_fundamentale.csv",
         "pasul_3_companii_putere_relativa.csv",
         "pasul_4_companii_obv.csv",
-        "pasul_5_companii_finale.csv"
+        "pasul_5_companii_finale.csv",
     ]
     for fname in files_to_remove:
         fpath = os.path.join(os.getcwd(), fname)
         if os.path.exists(fpath):
             try:
                 os.remove(fpath)
-                print(f"S-a șters fișierul vechi: {fname}")
-            except Exception as e:
-                print(f"Nu s-a putut șterge {fname}: {e}")
+            except Exception:
+                pass
 
-
-    # --- PASUL 1: SELECȚIA SECTOARELOR (cu caching) ---
-    NUME_FISIER_CACHE_SECTOARE = "sectoare_cache.csv"
+    # --- PASUL 1: SELECȚIA SECTOARELOR (cu caching TTL) ---
+    NUME_FISIER_CACHE = "sectoare_cache.csv"
     try:
         script_dir = os.path.dirname(os.path.abspath(__file__))
     except NameError:
         script_dir = os.getcwd()
 
-    cache_file_path = os.path.join(script_dir, NUME_FISIER_CACHE_SECTOARE)
-
+    cache_file_path = os.path.join(script_dir, NUME_FISIER_CACHE)
     df_detalii_sectoare = pd.DataFrame()
     lista_sectoare_selectate = []
 
-    try:
-        df_detalii_sectoare = pd.read_csv(cache_file_path)
-        print(
-            f"Am încărcat {len(df_detalii_sectoare)} sectoare din cache ('{cache_file_path}')."
-        )
+    # Check cache with TTL
+    cache_valid = False
+    if os.path.exists(cache_file_path):
+        file_age_days = (
+            datetime.datetime.now()
+            - datetime.datetime.fromtimestamp(os.path.getmtime(cache_file_path))
+        ).days
 
-    except FileNotFoundError:
-        print(
-            f"Fișierul cache nu a fost găsit la '{cache_file_path}'. Se rulează extragerea live..."
-        )
+        if file_age_days <= CACHE_TTL_DAYS:
+            try:
+                df_detalii_sectoare = pd.read_csv(cache_file_path)
+                print(
+                    f"Am încărcat {len(df_detalii_sectoare)} sectoare din cache "
+                    f"(vechi de {file_age_days} zile, TTL: {CACHE_TTL_DAYS} zile)."
+                )
+                cache_valid = True
+            except Exception as e:
+                print(f"Eroare la citirea cache-ului: {e}")
+        else:
+            print(
+                f"Cache-ul de sectoare a expirat ({file_age_days} zile > TTL {CACHE_TTL_DAYS} zile). "
+                f"Se re-descarcă..."
+            )
+            try:
+                os.remove(cache_file_path)
+            except Exception:
+                pass
+
+    if not cache_valid:
+        print("Se rulează extragerea live a sectoarelor...")
         lista_sectoare_selectate, df_detalii_sectoare = get_sectoare_profitabile()
 
         if not df_detalii_sectoare.empty:
             try:
                 df_detalii_sectoare.to_csv(cache_file_path, index=False)
-                print(
-                    f"Am salvat sectoarele în '{cache_file_path}' pentru utilizare viitoare."
-                )
+                print(f"Am salvat sectoarele în '{cache_file_path}'.")
             except Exception as e:
-                print(f"Atenție: Nu am putut salva fișierul cache: {e}")
+                print(f"Atenție: Nu am putut salva cache-ul: {e}")
         else:
-            print("Funcția 'get_sectoare_profitabile' nu a returnat niciun sector.")
+            result['error'] = "Funcția 'get_sectoare_profitabile' nu a returnat niciun sector."
+            print(result['error'])
+            return result
 
-    except Exception as e:
-        print(f"O eroare neașteptată la citirea cache-ului: {e}")
+    # Extract sector list
+    if df_detalii_sectoare.empty:
+        result['error'] = "Nu s-au găsit date despre sectoare."
+        print(result['error'])
+        return result
 
-    # --- Continuăm cu Pasul 2 doar dacă avem sectoare ---
-    if not df_detalii_sectoare.empty:
+    try:
+        lista_sectoare_selectate = df_detalii_sectoare["Sector"].tolist()
+    except KeyError:
+        result['error'] = "Coloana 'Sector' nu există în cache."
+        print(result['error'])
+        return result
 
-        print("\n===== PASUL 1 REZUMAT: SECTOARE PROCESATE =====")
+    print(f"\n===== PASUL 1 REZUMAT: {len(lista_sectoare_selectate)} SECTOARE =====")
+    print(lista_sectoare_selectate)
+    result['sectoare'] = lista_sectoare_selectate
+
+    # --- PASUL 2: FILTRAREA COMPANIILOR ---
+    df_companii_filtrate = filtreaza_companii(
+        lista_sectoare_selectate, filters_dict=filtre_curente
+    )
+
+    if df_companii_filtrate.empty:
+        result['error'] = "Pasul 2 nu a găsit nicio companie care să corespundă filtrelor."
+        print(f"\n{result['error']}")
+        return result
+
+    print(f"\n===== REZUMAT PASUL 2: {len(df_companii_filtrate)} COMPANII FUNDAMENTALE =====")
+    df_companii_filtrate.to_csv("pasul_2_companii_fundamentale.csv", index=False)
+    result['companii_filtrate'] = df_companii_filtrate
+
+    # --- PASUL 3: ANALIZA PUTERII RELATIVE (vs. SPY) ---
+    tickere_de_analizat = df_companii_filtrate["Ticker"].tolist()
+    lista_tickere_puternice = compara_cu_piata(tickere_de_analizat)
+
+    if not lista_tickere_puternice:
+        result['error'] = "Pasul 3 (Putere Relativă) a eliminat toate companiile."
+        print(f"\n{result['error']}")
+        return result
+
+    df_companii_puternice = df_companii_filtrate[
+        df_companii_filtrate["Ticker"].isin(lista_tickere_puternice)
+    ]
+    print(f"\n===== REZUMAT PASUL 3: {len(df_companii_puternice)} SUPRAPERFORMAT SPY =====")
+    df_companii_puternice.to_csv("pasul_3_companii_putere_relativa.csv", index=False)
+
+    # --- PASUL 4: ANALIZA OBV ---
+    lista_tickere_obv = filtreaza_obv(lista_tickere_puternice)
+
+    if not lista_tickere_obv:
+        result['error'] = "Pasul 4 (OBV) a eliminat toate companiile."
+        print(f"\n{result['error']}")
+        return result
+
+    df_companii_obv = df_companii_puternice[
+        df_companii_puternice["Ticker"].isin(lista_tickere_obv)
+    ]
+    print(f"\n===== REZUMAT PASUL 4: {len(df_companii_obv)} AU TRECUT FILTRUL OBV =====")
+    df_companii_obv.to_csv("pasul_4_companii_obv.csv", index=False)
+
+    # --- PASUL 5: FILTRAREA PUTERII INDUSTRIEI ---
+    df_companii_finale = filtreaza_puterea_industriei(df_companii_obv)
+
+    if df_companii_finale.empty:
+        result['error'] = "Pasul 5 (Puterea Industriei) a eliminat toate companiile."
+        print(f"\n{result['error']}")
+        return result
+
+    print(f"\n===== REZUMAT PASUL 5: {len(df_companii_finale)} COMPANII SELECTATE =====")
+    coloane_de_afisat = ["Ticker", "Company", "Sector", "Industry", "Price", "Change"]
+    coloane_existente = [
+        col for col in coloane_de_afisat if col in df_companii_finale.columns
+    ]
+    if coloane_existente:
+        print(df_companii_finale[coloane_existente].head(20).to_string(index=False))
+
+    df_companii_finale.to_csv("companii_selectie_finala.csv", index=False)
+    result['companii_finale'] = df_companii_finale
+
+    # --- PASUL 6: OPTIMIZAREA PORTOFOLIULUI ---
+    lista_tickere_finale = df_companii_finale["Ticker"].tolist()
+    alocari = calculeaza_portofoliu(lista_tickere_finale, profile_type=profile_type)
+
+    if alocari is None:
+        result['error'] = "Pasul 6 (Optimizare) a eșuat."
+        print(f"\n{result['error']}")
+        return result
+
+    result['alocari'] = alocari
+
+    # --- CALCUL FINAL: BUGET ȘI ACȚIUNI ---
+    df_alocare = pd.DataFrame(
+        list(alocari.items()),
+        columns=["Ticker", "Pondere"],
+    )
+    df_alocare = df_alocare[df_alocare["Pondere"] > 0].sort_values(
+        by="Pondere", ascending=False
+    )
+
+    # Adăugăm Prețul Curent
+    df_alocare = df_alocare.merge(
+        df_companii_finale[["Ticker", "Price"]],
+        on="Ticker",
+        how="left",
+    )
+
+    # Calculăm Valoarea Investiției (USD)
+    df_alocare["Valoare_Investitie ($)"] = df_alocare["Pondere"] * budget
+
+    # Calculăm Numărul de Acțiuni
+    df_alocare["Nr_Actiuni"] = (
+        df_alocare["Valoare_Investitie ($)"] / df_alocare["Price"]
+    )
+    df_alocare["Nr_Actiuni"] = df_alocare["Nr_Actiuni"].round(2)
+
+    # Formatăm pentru afișare
+    df_afisare = df_alocare.copy()
+    df_afisare["Pondere"] = df_afisare["Pondere"].apply(lambda x: f"{x*100:.2f}%")
+    df_afisare["Valoare_Investitie ($)"] = df_afisare["Valoare_Investitie ($)"].apply(
+        lambda x: f"${x:.2f}"
+    )
+    df_afisare["Price"] = df_afisare["Price"].apply(lambda x: f"${x:.2f}")
+
+    # Afișăm în consolă
+    print(f"\n===== PLAN DE INVESTIȚII (Buget: ${budget:,.0f}) =====")
+    print(df_afisare.to_string(index=False))
+
+    # Salvăm în CSV
+    df_afisare.to_csv("alocare_finala_portofoliu.csv", index=False)
+    print(f"\nPlanul de investiții a fost salvat în 'alocare_finala_portofoliu.csv'")
+
+    result['success'] = True
+    result['plan_investitii'] = df_alocare
+
+    return result
+
+
+# ============================================================================
+# CLI ENTRY POINT
+# ============================================================================
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="SmartVest Selection Algorithm")
+    parser.add_argument(
+        "--profile", type=str, default="balanced",
+        choices=["conservative", "balanced", "aggressive"],
+        help="Investment profile"
+    )
+    parser.add_argument(
+        "--budget", type=float, default=10000.0,
+        help="Investment budget in USD"
+    )
+    parser.add_argument(
+        "--custom-filters", type=str, default=None,
+        help="Custom filters as JSON string"
+    )
+    parser.add_argument(
+        "--custom-filters-file", type=str, default=None,
+        help="Path to JSON file with custom filters"
+    )
+
+    args = parser.parse_args()
+
+    # Determine filters
+    filtre_curente = None
+
+    if args.custom_filters_file:
         try:
-            lista_sectoare_selectate = df_detalii_sectoare["Sector"].tolist()
-            print(
-                f"\n---> Se vor procesa TOATE cele {len(lista_sectoare_selectate)} sectoare găsite:"
-            )
-            print(lista_sectoare_selectate)
+            with open(args.custom_filters_file, 'r', encoding='utf-8') as f:
+                filtre_curente = json.load(f)
+            print(f"Using CUSTOM FILTERS from file: {args.custom_filters_file}")
+        except Exception as e:
+            print(f"Error reading custom filters file: {e}. Falling back to profile.")
 
-        except KeyError:
-            print(
-                f"Eroare: Coloana 'Sector' nu există în '{NUME_FISIER_CACHE_SECTOARE}'."
-            )
-            lista_sectoare_selectate = []  # Oprește execuția
+    elif args.custom_filters:
+        try:
+            filtre_curente = json.loads(args.custom_filters)
+            print(f"Using CUSTOM FILTERS from CLI argument")
+        except json.JSONDecodeError as e:
+            print(f"Error parsing custom filters JSON: {e}. Falling back to profile.")
 
-        # ... (codul pentru Pasul 1 / caching rămâne neschimbat) ...
+    # Run the pipeline
+    result = run_full_pipeline(
+        profile_type=args.profile,
+        budget=args.budget,
+        filters_dict=filtre_curente
+    )
 
-        # --- PASUL 2: FILTRAREA COMPANIILOR ---
-        if lista_sectoare_selectate:  # Continuăm doar dacă avem sectoare
-            df_companii_filtrate = filtreaza_companii(lista_sectoare_selectate, filters_dict=filtre_curente)
-
-            if not df_companii_filtrate.empty:
-                print(
-                    f"\n===== REZUMAT PASUL 2: {len(df_companii_filtrate)} COMPANII FUNDAMENTALE GĂSITE ====="
-                )
-                df_companii_filtrate.to_csv(
-                    "pasul_2_companii_fundamentale.csv", index=False
-                )
-                print("   -> Rezultatele Pasului 2 au fost salvate.")
-
-                # --- PASUL 3: ANALIZA PUTERII RELATIVE (vs. SPY) ---
-                tickere_de_analizat_pasul_3 = df_companii_filtrate["Ticker"].tolist()
-                lista_tickere_puternice = compara_cu_piata(tickere_de_analizat_pasul_3)
-
-                if lista_tickere_puternice:
-                    df_companii_puternice = df_companii_filtrate[
-                        df_companii_filtrate["Ticker"].isin(lista_tickere_puternice)
-                    ]
-                    print(
-                        f"\n===== REZUMAT PASUL 3: {len(df_companii_puternice)} COMPANII AU SUPRAPERFORMAT SPY ====="
-                    )
-                    df_companii_puternice.to_csv(
-                        "pasul_3_companii_putere_relativa.csv", index=False
-                    )
-                    print("   -> Rezultatele Pasului 3 au fost salvate.")
-
-                    # --- PASUL 4: ANALIZA OBV ---
-                    lista_tickere_obv = filtreaza_obv(lista_tickere_puternice)
-
-                    if lista_tickere_obv:
-                        df_companii_obv = df_companii_puternice[
-                            df_companii_puternice["Ticker"].isin(lista_tickere_obv)
-                        ]
-                        print(
-                            f"\n===== REZUMAT PASUL 4: {len(df_companii_obv)} COMPANII AU TRECUT FILTRUL OBV ====="
-                        )
-                        df_companii_obv.to_csv("pasul_4_companii_obv.csv", index=False)
-                        print("   -> Rezultatele Pasului 4 au fost salvate.")
-
-                        # --- NOU: PASUL 5: FILTRAREA PUTERII INDUSTRIEI ---
-                        df_companii_finale = filtreaza_puterea_industriei(
-                            df_companii_obv
-                        )
-
-                        if not df_companii_finale.empty:
-                            print(
-                                f"\n===== REZUMAT FINAL (PASUL 5): {len(df_companii_finale)} COMPANII SELECTATE ====="
-                            )
-
-                            coloane_de_afisat = [
-                                "Ticker",
-                                "Company",
-                                "Sector",
-                                "Industry",
-                                "Price",
-                                "Change",
-                            ]
-                            coloane_existente = [
-                                col
-                                for col in coloane_de_afisat
-                                if col in df_companii_finale.columns
-                            ]
-                            if coloane_existente:
-                                print(
-                                    df_companii_finale[coloane_existente]
-                                    .head(20)
-                                    .to_string(index=False)
-                                )
-
-                            nume_fisier_csv = "pasul_5_companii_finale.csv"
-                            df_companii_finale.to_csv(nume_fisier_csv, index=False)
-                            df_companii_finale = filtreaza_puterea_industriei(
-                                df_companii_obv
-                            )
-
-                        if not df_companii_finale.empty:
-                            print(
-                                f"\n===== REZUMAT FINAL (PASUL 5): {len(df_companii_finale)} COMPANII SELECTATE ====="
-                            )
-
-                            # ... (afișarea tabelului) ...
-
-                            # Salvarea fișierului final de selecție
-                            nume_fisier_csv = "companii_selectie_finala.csv"
-                            df_companii_finale.to_csv(nume_fisier_csv, index=False)
-                            print(
-                                f"\nLista finală a fost salvată în '{nume_fisier_csv}'"
-                            )
-
-                            # =========================================================
-                            # === PASUL 6: ALOCAREA (MATEMATICA) PORTOFOLIULUI ===
-                            # =========================================================
-
-                            # Extragem lista simplă de tickere din rezultatul final
-                            lista_tickere_finale = df_companii_finale["Ticker"].tolist()
-
-                            # Apelăm funcția GMV
-                            # ... (codul tău existent) ...
-
-                            # Apelăm funcția GMV (care va afișa acum Pie Chart-ul)
-                            # ... (codul tău existent, după apelarea calculeaza_portofoliu_gmv) ...
-
-                            # Apelăm funcția GMV
-                            # ... (codul tău existent, după apelarea calculeaza_portofoliu_gmv) ...
-
-                            # Apelăm funcția GMV
-                            alocari_gmv = calculeaza_portofoliu_gmv(
-                                lista_tickere_finale
-                            )
-
-                            # --- CALCUL FINAL: BUGET ȘI ACȚIUNI (Buget: 10.000 USD) ---
-                            if alocari_gmv:
-                                # Bugetul este deja setat din argumente
-                                # BUGET_TOTAL = 10000.0
-
-                                # 1. Pregătim datele
-                                df_alocare = pd.DataFrame(
-                                    list(alocari_gmv.items()),
-                                    columns=["Ticker", "Pondere"],
-                                )
-                                df_alocare = df_alocare[
-                                    df_alocare["Pondere"] > 0
-                                ].sort_values(by="Pondere", ascending=False)
-
-                                # 2. Adăugăm Prețul Curent
-                                df_alocare = df_alocare.merge(
-                                    df_companii_finale[["Ticker", "Price"]],
-                                    on="Ticker",
-                                    how="left",
-                                )
-
-                                # 3. Calculăm Valoarea Investiției (USD)
-                                # Schimbat numele coloanei în ($)
-                                df_alocare["Valoare_Investitie ($)"] = (
-                                    df_alocare["Pondere"] * BUGET_TOTAL
-                                )
-
-                                # 4. Calculăm Numărul de Acțiuni
-                                # Acum calculul este matematic perfect (USD / USD)
-                                df_alocare["Nr_Actiuni"] = (
-                                    df_alocare["Valoare_Investitie ($)"]
-                                    / df_alocare["Price"]
-                                )
-                                df_alocare["Nr_Actiuni"] = df_alocare[
-                                    "Nr_Actiuni"
-                                ].round(2)
-
-                                # 5. Formatăm pentru afișare
-                                df_afisare = df_alocare.copy()
-                                df_afisare["Pondere"] = df_afisare["Pondere"].apply(
-                                    lambda x: f"{x*100:.2f}%"
-                                )
-                                # Schimbat simbolul în $
-                                df_afisare["Valoare_Investitie ($)"] = df_afisare[
-                                    "Valoare_Investitie ($)"
-                                ].apply(lambda x: f"${x:.2f}")
-                                df_afisare["Price"] = df_afisare["Price"].apply(
-                                    lambda x: f"${x:.2f}"
-                                )
-
-                                # 6. Afișăm în consolă
-                                print(
-                                    f"\n===== PLAN DE INVESTIȚII (Buget: ${BUGET_TOTAL:,.0f}) ====="
-                                )
-                                print(df_afisare.to_string(index=False))
-
-                                # 7. Salvăm în CSV
-                                df_afisare.to_csv(
-                                    "alocare_finala_portofoliu.csv", index=False
-                                )
-                                print(
-                                    "\nPlanul de investiții a fost salvat în 'alocare_finala_portofoliu.csv'"
-                                )
-
-                                print(
-                                    "\nAlocarea (în procente) a fost salvată în 'alocare_finala_portofoliu.csv'"
-                                )
-                        else:
-                            print(
-                                "\nPASUL 5 (Industrie) a eliminat toate companiile rămase."
-                            )
-                    else:
-                        print("\nPASUL 4 (OBV) a eliminat toate companiile rămase.")
-                else:
-                    print("\nPASUL 3 (Putere Relativă) a eliminat toate companiile.")
-            else:
-                print(
-                    "\nPASUL 2 nu a găsit nicio companie care să corespundă filtrelor fundamentale."
-                )
-        else:
-            print(
-                "\nPASUL 1 nu a produs nicio listă de sectoare. Algoritmul se oprește."
-            )
+    if result['success']:
+        print("\n" + "=" * 60)
+        print("✅ ALGORITM FINALIZAT CU SUCCES")
+        print("=" * 60)
     else:
-        print("\nPASUL 1 a eșuat sau nu a găsit sectoare. Algoritmul se oprește.")
+        print("\n" + "=" * 60)
+        print(f"❌ ALGORITM OPRIT: {result['error']}")
+        print("=" * 60)
+

@@ -33,5 +33,10 @@ urlpatterns = [
     path('presets/<int:pk>/delete/', views.delete_preset, name='delete-preset'),
     path('presets/<int:pk>/update/', views.update_preset, name='update-preset'),
     path('presets/<int:pk>/run/', views.run_with_preset, name='run-with-preset'),
+    
+    # Unicorn Scanner
+    path('unicorns/', views.unicorn_scanner, name='unicorn-scanner'),
+    path('unicorns/watch/<str:ticker>/', views.add_to_watchlist, name='add-to-watchlist'),
+    path('unicorns/unwatch/<int:pk>/', views.remove_from_watchlist, name='remove-from-watchlist'),
 ]
 

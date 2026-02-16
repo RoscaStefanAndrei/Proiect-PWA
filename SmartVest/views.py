@@ -578,3 +578,180 @@ def get_user_presets(request):
         return FilterPreset.objects.filter(user=request.user)[:5]
     return []
 
+
+# ==========================
+# UNICORN SCANNER
+# ==========================
+from .models import WatchedUnicorn
+import sys
+import os
+
+# Add project root to path for importing unicorn_scanner
+sys.path.insert(0, settings.BASE_DIR)
+
+@login_required
+def unicorn_scanner(request):
+    """Main unicorn scanner page - shows scan results and watchlist"""
+    from unicorn_scanner import scan_for_unicorns
+    
+    scan_results = []
+    error_message = None
+    is_scanning = False
+    
+    # Check if user wants to run a scan
+    if request.method == 'POST' and 'run_scan' in request.POST:
+        try:
+            is_scanning = True
+            df_unicorns, _ = scan_for_unicorns()
+            
+            if not df_unicorns.empty:
+                scan_results = df_unicorns.to_dict('records')
+                # Clear old data and store new in session
+                if 'unicorn_results' in request.session:
+                    del request.session['unicorn_results']
+                request.session['unicorn_results'] = scan_results
+                request.session.modified = True
+            else:
+                error_message = "Nu s-au găsit candidați unicorn. Încearcă din nou mai târziu."
+        except Exception as e:
+            error_message = f"Eroare la scanare: {str(e)}"
+            print(f"Unicorn scan error: {e}")
+    else:
+        # Load cached results from session if available
+        scan_results = request.session.get('unicorn_results', [])
+    
+    # Get user's watchlist
+    watchlist = WatchedUnicorn.objects.filter(user=request.user)
+    watched_tickers = [w.ticker for w in watchlist]
+    
+    # Fetch real-time prices for watchlist items
+    watchlist_with_pl = []
+    if watchlist:
+        tickers_to_fetch = [w.ticker for w in watchlist if w.entry_price]
+        if tickers_to_fetch:
+            try:
+                # Fetch current data from yfinance
+                price_data = yf.download(tickers_to_fetch, period='2d', progress=False)
+                
+                for w in watchlist:
+                    item = {
+                        'pk': w.pk,
+                        'ticker': w.ticker,
+                        'company_name': w.company_name,
+                        'entry_price': float(w.entry_price) if w.entry_price else None,
+                        'added_at': w.added_at,
+                        'notes': w.notes,
+                        'current_price': None,
+                        'daily_pl': None,
+                        'daily_pl_pct': None,
+                        'open_pl': None,
+                        'open_pl_pct': None,
+                    }
+                    
+                    try:
+                        if len(tickers_to_fetch) > 1:
+                            close_data = price_data['Close'][w.ticker].dropna()
+                        else:
+                            close_data = price_data['Close'].dropna()
+                        
+                        if len(close_data) >= 1:
+                            current_price = float(close_data.iloc[-1])
+                            item['current_price'] = round(current_price, 2)
+                            
+                            # Calculate Daily P/L (if we have 2 days of data)
+                            if len(close_data) >= 2:
+                                prev_close = float(close_data.iloc[-2])
+                                daily_pl = current_price - prev_close
+                                daily_pl_pct = (daily_pl / prev_close) * 100
+                                item['daily_pl'] = round(daily_pl, 2)
+                                item['daily_pl_pct'] = round(daily_pl_pct, 2)
+                            
+                            # Calculate Open P/L (since entry)
+                            if item['entry_price']:
+                                open_pl = current_price - item['entry_price']
+                                open_pl_pct = (open_pl / item['entry_price']) * 100
+                                item['open_pl'] = round(open_pl, 2)
+                                item['open_pl_pct'] = round(open_pl_pct, 2)
+                    except Exception as e:
+                        print(f"Error processing {w.ticker}: {e}")
+                    
+                    watchlist_with_pl.append(item)
+            except Exception as e:
+                print(f"Error fetching prices: {e}")
+                # Fallback to basic watchlist data
+                for w in watchlist:
+                    watchlist_with_pl.append({
+                        'pk': w.pk,
+                        'ticker': w.ticker,
+                        'company_name': w.company_name,
+                        'entry_price': float(w.entry_price) if w.entry_price else None,
+                        'added_at': w.added_at,
+                        'notes': w.notes,
+                        'current_price': None,
+                        'daily_pl': None,
+                        'daily_pl_pct': None,
+                        'open_pl': None,
+                        'open_pl_pct': None,
+                    })
+        else:
+            # No entry prices, just show basic data
+            for w in watchlist:
+                watchlist_with_pl.append({
+                    'pk': w.pk,
+                    'ticker': w.ticker,
+                    'company_name': w.company_name,
+                    'entry_price': None,
+                    'added_at': w.added_at,
+                    'notes': w.notes,
+                    'current_price': None,
+                    'daily_pl': None,
+                    'daily_pl_pct': None,
+                    'open_pl': None,
+                    'open_pl_pct': None,
+                })
+    
+    context = {
+        'scan_results': scan_results,
+        'watchlist': watchlist_with_pl,
+        'watched_tickers': watched_tickers,
+        'error_message': error_message,
+        'is_scanning': is_scanning,
+    }
+    return render(request, 'SmartVest/unicorn_scanner.html', context)
+
+
+@login_required
+def add_to_watchlist(request, ticker):
+    """Add a stock to user's unicorn watchlist"""
+    if request.method == 'POST':
+        # Get cached results from session
+        scan_results = request.session.get('unicorn_results', [])
+        
+        # Find the stock info
+        stock_info = next((s for s in scan_results if s.get('Ticker') == ticker), None)
+        
+        # Check if already watched
+        if WatchedUnicorn.objects.filter(user=request.user, ticker=ticker).exists():
+            messages.warning(request, f'{ticker} este deja în watchlist!')
+        else:
+            WatchedUnicorn.objects.create(
+                user=request.user,
+                ticker=ticker,
+                company_name=stock_info.get('Company', '') if stock_info else '',
+                entry_price=stock_info.get('Price') if stock_info else None,
+            )
+            messages.success(request, f'{ticker} a fost adăugat în watchlist! 🦄')
+    
+    return redirect('unicorn-scanner')
+
+
+@login_required
+def remove_from_watchlist(request, pk):
+    """Remove a stock from user's unicorn watchlist"""
+    watched = get_object_or_404(WatchedUnicorn, pk=pk, user=request.user)
+    ticker = watched.ticker
+    watched.delete()
+    messages.success(request, f'{ticker} a fost șters din watchlist.')
+    return redirect('unicorn-scanner')
+
+

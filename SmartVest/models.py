@@ -42,3 +42,21 @@ class FilterPreset(models.Model):
     
     def __str__(self):
         return f"{self.name} - {self.user.username}"
+
+
+class WatchedUnicorn(models.Model):
+    """Tracks stocks in user's unicorn watchlist"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    ticker = models.CharField(max_length=10)
+    company_name = models.CharField(max_length=200, blank=True)
+    added_at = models.DateTimeField(auto_now_add=True)
+    entry_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    target_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    notes = models.TextField(blank=True)
+    
+    class Meta:
+        ordering = ['-added_at']
+        unique_together = ['user', 'ticker']  # Prevent duplicate watchlist entries
+    
+    def __str__(self):
+        return f"{self.ticker} - {self.user.username}"
