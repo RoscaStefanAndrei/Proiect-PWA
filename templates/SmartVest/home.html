@@ -28,6 +28,18 @@
                 {{ total_profit_loss|floatformat:2 }} $
             </span>
             {% endif %}
+
+            <span class="text-muted small mx-2">|</span>
+            <span class="text-muted small me-1">Daily:</span>
+            {% if total_daily_pl >= 0 %}
+            <span class="text-success fw-bold small">
+                +{{ total_daily_pl|floatformat:2 }} $
+            </span>
+            {% else %}
+            <span class="text-danger fw-bold small">
+                {{ total_daily_pl|floatformat:2 }} $
+            </span>
+            {% endif %}
         </div>
 
         <!-- Action Buttons Bar -->
@@ -90,16 +102,26 @@
 
                 <!-- Right: Financials -->
                 <div class="text-end ms-3">
-                    <span class="d-block text-white fw-bold">{{ item.current_value|floatformat:2 }} $</span>
+                    <span class="d-block text-white fw-bold" style="font-size:0.9rem">
+                        {{ item.current_value|floatformat:2 }} $
+                    </span>
                     {% if item.profit_loss >= 0 %}
                     <span class="d-block small text-success fw-bold">
                         +{{ item.profit_loss|floatformat:2 }} $
                     </span>
                     {% else %}
-                    <span class="d-block small text-white">
+                    <span class="d-block small text-danger fw-bold">
                         {{ item.profit_loss|floatformat:2 }} $
                     </span>
                     {% endif %}
+                    <span class="d-block" style="font-size: 0.7rem;">
+                        <span class="text-muted">Daily: </span>
+                        {% if item.total_daily_pl >= 0 %}
+                        <span class="text-success fw-bold">+{{ item.total_daily_pl|floatformat:2 }} $</span>
+                        {% else %}
+                        <span class="text-danger fw-bold">{{ item.total_daily_pl|floatformat:2 }} $</span>
+                        {% endif %}
+                    </span>
                 </div>
             </div>
             {% endfor %}

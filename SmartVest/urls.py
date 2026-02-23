@@ -38,5 +38,11 @@ urlpatterns = [
     path('unicorns/', views.unicorn_scanner, name='unicorn-scanner'),
     path('unicorns/watch/<str:ticker>/', views.add_to_watchlist, name='add-to-watchlist'),
     path('unicorns/unwatch/<int:pk>/', views.remove_from_watchlist, name='remove-from-watchlist'),
+    
+    # Backtesting (Admin Only)
+    path('backtest/', views.backtest_view, name='backtest'),
+    path('backtest/progress/', views.backtest_progress_api, name='backtest-progress'),
+    path('backtest/results/', views.backtest_results, name='backtest-results'),
+    path('backtest/results/<int:pk>/', views.backtest_result_detail, name='backtest-result-detail'),
+    path('backtest/runner-status/', views.backtest_runner_status, name='backtest-runner-status'),
 ]
-

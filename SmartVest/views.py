@@ -1,15 +1,20 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.http import JsonResponse
+import datetime
+import threading
 from django.contrib.auth.models import User
 from .forms import UserRegisterForm, UserProfileForm, UserUpdateForm
-from .models import UserProfile, SavedPortfolio
+from django.db import models as db_models
+from .models import UserProfile, SavedPortfolio, BacktestRun
 
 @login_required
 def home(request):
     performance_data = []
     total_balance = 0.0
     total_profit_loss = 0.0
+    total_daily_pl = 0.0
     
     if request.user.is_authenticated:
         portfolios = SavedPortfolio.objects.filter(user=request.user).order_by('-created_at')
@@ -18,11 +23,13 @@ def home(request):
         for item in performance_data:
             total_balance += item['current_value']
             total_profit_loss += item['profit_loss']
+            total_daily_pl += item.get('total_daily_pl', 0.0)
     
     context = {
         'performance_data': performance_data,
         'total_balance': total_balance,
-        'total_profit_loss': total_profit_loss
+        'total_profit_loss': total_profit_loss,
+        'total_daily_pl': total_daily_pl,
     }
     return render(request, 'SmartVest/home.html', context)
 
@@ -92,6 +99,12 @@ class PortfolioListView(LoginRequiredMixin, ListView):
     def get_queryset(self):
         return SavedPortfolio.objects.filter(user=self.request.user).order_by('-created_at')
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        portfolios = self.get_queryset()
+        context['performance_data'] = get_portfolio_performance(portfolios)
+        return context
+
 class PortfolioDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
     model = SavedPortfolio
     template_name = 'SmartVest/portfolio_detail.html'
@@ -101,6 +114,14 @@ class PortfolioDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
         if self.request.user == portfolio.user:
             return True
         return False
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        portfolio = self.get_object()
+        perf = get_portfolio_performance([portfolio])
+        if perf:
+            context['perf'] = perf[0]
+        return context
 
 class PortfolioDeleteView(LoginRequiredMixin, UserPassesTestMixin, DeleteView):
     model = SavedPortfolio
@@ -591,34 +612,80 @@ sys.path.insert(0, settings.BASE_DIR)
 
 @login_required
 def unicorn_scanner(request):
-    """Main unicorn scanner page - shows scan results and watchlist"""
+    """Main unicorn scanner page - two-step UX with relax option"""
     from unicorn_scanner import scan_for_unicorns
     
     scan_results = []
     error_message = None
     is_scanning = False
+    show_relax_prompt = False   # Show "relax filters?" prompt
+    is_relaxed = False          # Are we showing relaxed (2/3) results?
+    has_perfect_results = False # Did we find any 3/3 stocks?
     
-    # Check if user wants to run a scan
-    if request.method == 'POST' and 'run_scan' in request.POST:
-        try:
-            is_scanning = True
-            df_unicorns, _ = scan_for_unicorns()
-            
-            if not df_unicorns.empty:
-                scan_results = df_unicorns.to_dict('records')
-                # Clear old data and store new in session
-                if 'unicorn_results' in request.session:
-                    del request.session['unicorn_results']
-                request.session['unicorn_results'] = scan_results
-                request.session.modified = True
+    if request.method == 'POST':
+        if 'run_scan' in request.POST:
+            # --- FRESH SCAN ---
+            try:
+                is_scanning = True
+                df_all_scored, _ = scan_for_unicorns()
+                
+                if not df_all_scored.empty:
+                    all_results = df_all_scored.to_dict('records')
+                    # Store ALL scored results in session
+                    request.session['unicorn_all_results'] = all_results
+                    request.session.modified = True
+                    
+                    # Filter to 3/3 first
+                    perfect = [r for r in all_results if r.get('Unicorn_Score', 0) >= 3]
+                    
+                    if perfect:
+                        # Found 3/3 — show them and offer to relax
+                        scan_results = perfect
+                        has_perfect_results = True
+                        show_relax_prompt = True
+                    else:
+                        # No 3/3 — prompt to relax
+                        strong = [r for r in all_results if r.get('Unicorn_Score', 0) >= 2]
+                        if strong:
+                            show_relax_prompt = True
+                            error_message = f"Nu am gasit companii cu scor perfect (3/3), dar exista {len(strong)} companii cu scor 2/3."
+                        else:
+                            error_message = "Nu s-au gasit candidati unicorn. Incearca din nou mai tarziu."
+                else:
+                    error_message = "Scanarea nu a returnat rezultate. Incearca din nou mai tarziu."
+            except Exception as e:
+                error_message = f"Eroare la scanare: {str(e)}"
+                print(f"Unicorn scan error: {e}")
+        
+        elif 'relax_filters' in request.POST:
+            # --- RELAX: show 2/3 from cached data ---
+            all_results = request.session.get('unicorn_all_results', [])
+            if all_results:
+                # Include both 3/3 and 2/3
+                scan_results = [r for r in all_results if r.get('Unicorn_Score', 0) >= 2]
+                is_relaxed = True
+                has_perfect_results = any(r.get('Unicorn_Score', 0) >= 3 for r in scan_results)
             else:
-                error_message = "Nu s-au găsit candidați unicorn. Încearcă din nou mai târziu."
-        except Exception as e:
-            error_message = f"Eroare la scanare: {str(e)}"
-            print(f"Unicorn scan error: {e}")
+                error_message = "Nu exista rezultate anterioare. Ruleaza o scanare noua."
     else:
-        # Load cached results from session if available
-        scan_results = request.session.get('unicorn_results', [])
+        # GET request — check for cached relaxed/perfect results
+        all_results = request.session.get('unicorn_all_results', [])
+        if all_results:
+            # Default: show 3/3 if available, otherwise show whatever we showed last
+            perfect = [r for r in all_results if r.get('Unicorn_Score', 0) >= 3]
+            if perfect:
+                scan_results = perfect
+                has_perfect_results = True
+                show_relax_prompt = True
+            else:
+                strong = [r for r in all_results if r.get('Unicorn_Score', 0) >= 2]
+                if strong:
+                    show_relax_prompt = True
+    
+    # Also store filtered results for watchlist add functionality
+    if scan_results:
+        request.session['unicorn_results'] = scan_results
+        request.session.modified = True
     
     # Get user's watchlist
     watchlist = WatchedUnicorn.objects.filter(user=request.user)
@@ -716,6 +783,9 @@ def unicorn_scanner(request):
         'watched_tickers': watched_tickers,
         'error_message': error_message,
         'is_scanning': is_scanning,
+        'show_relax_prompt': show_relax_prompt,
+        'is_relaxed': is_relaxed,
+        'has_perfect_results': has_perfect_results,
     }
     return render(request, 'SmartVest/unicorn_scanner.html', context)
 
@@ -755,3 +825,288 @@ def remove_from_watchlist(request, pk):
     return redirect('unicorn-scanner')
 
 
+# ==========================
+# BACKTESTING (ADMIN-ONLY)
+# ==========================
+
+# Global progress tracker for backtest
+BACKTEST_PROGRESS = {
+    'percent': 0,
+    'message': 'Idle',
+    'running': False,
+    'result': None,
+}
+
+def _backtest_progress_callback(message, percent):
+    """Called by BacktestEngine to report progress."""
+    global BACKTEST_PROGRESS
+    BACKTEST_PROGRESS['percent'] = percent
+    BACKTEST_PROGRESS['message'] = message
+
+
+def _run_backtest_thread(start_date, end_date, profile_type, initial_capital):
+    """Run backtest in background thread."""
+    global BACKTEST_PROGRESS
+    BACKTEST_PROGRESS['running'] = True
+    BACKTEST_PROGRESS['result'] = None
+    BACKTEST_PROGRESS['percent'] = 0
+    BACKTEST_PROGRESS['message'] = 'Se inițializează...'
+    
+    try:
+        from backtester import BacktestEngine
+        
+        engine = BacktestEngine(
+            start_date=start_date,
+            end_date=end_date,
+            profile_type=profile_type,
+            initial_capital=initial_capital,
+            rebalance_months=3,
+            progress_callback=_backtest_progress_callback,
+        )
+        
+        result = engine.run()
+        BACKTEST_PROGRESS['result'] = result.to_dict()
+        BACKTEST_PROGRESS['percent'] = 100
+        BACKTEST_PROGRESS['message'] = 'Backtest finalizat!'
+        
+    except Exception as e:
+        print(f"Backtest error: {e}")
+        BACKTEST_PROGRESS['result'] = {
+            'metrics': {'error': str(e)},
+            'profile_type': profile_type,
+            'start_date': start_date,
+            'end_date': end_date,
+            'initial_capital': initial_capital,
+            'equity_curve': {'dates': [], 'values': []},
+            'benchmark_curve': {'dates': [], 'values': []},
+            'snapshots': [],
+        }
+        BACKTEST_PROGRESS['percent'] = 100
+        BACKTEST_PROGRESS['message'] = f'Eroare: {str(e)}'
+    finally:
+        BACKTEST_PROGRESS['running'] = False
+
+
+@login_required
+@user_passes_test(lambda u: u.is_superuser)
+def backtest_view(request):
+    """Main backtesting page — admin only."""
+    global BACKTEST_PROGRESS
+    
+    result = None
+    
+    if request.method == 'POST':
+        if BACKTEST_PROGRESS.get('running'):
+            messages.warning(request, "Un backtest este deja în desfășurare!")
+            return redirect('backtest')
+        
+        # Parse form data
+        period_years = int(request.POST.get('period', 2))
+        profile_type = request.POST.get('profile_type', 'balanced')
+        try:
+            initial_capital = float(request.POST.get('initial_capital', 10000))
+        except ValueError:
+            initial_capital = 10000.0
+        
+        # Calculate dates
+        end_date = datetime.date.today().strftime('%Y-%m-%d')
+        start_date = (datetime.date.today() - datetime.timedelta(days=period_years * 365)).strftime('%Y-%m-%d')
+        
+        # Start backtest in background
+        thread = threading.Thread(
+            target=_run_backtest_thread,
+            args=(start_date, end_date, profile_type, initial_capital)
+        )
+        thread.daemon = True
+        thread.start()
+        
+        messages.success(request, f"Backtest pornit: {profile_type.title()}, {period_years}Y, ${initial_capital:,.0f}")
+        
+        # Wait for completion (with timeout)
+        import time as time_module
+        max_wait = 600  # 10 minutes max
+        waited = 0
+        while BACKTEST_PROGRESS.get('running') and waited < max_wait:
+            time_module.sleep(1)
+            waited += 1
+        
+        # Get result
+        if BACKTEST_PROGRESS.get('result'):
+            result = BACKTEST_PROGRESS['result']
+            
+            # Format allocations as percentages for display
+            if result.get('snapshots'):
+                for snap in result['snapshots']:
+                    if snap.get('allocations'):
+                        snap['allocations'] = {
+                            k: round(v * 100, 1) 
+                            for k, v in snap['allocations'].items() 
+                            if v > 0
+                        }
+    
+    elif BACKTEST_PROGRESS.get('result'):
+        # GET request — show last result if available
+        result = BACKTEST_PROGRESS['result']
+        if result.get('snapshots'):
+            for snap in result['snapshots']:
+                if snap.get('allocations'):
+                    # Only format if values are in 0-1 range (not already formatted)
+                    first_val = next(iter(snap['allocations'].values()), 0)
+                    if first_val <= 1:
+                        snap['allocations'] = {
+                            k: round(v * 100, 1) 
+                            for k, v in snap['allocations'].items() 
+                            if v > 0
+                        }
+    
+    context = {
+        'result': result,
+        'running': BACKTEST_PROGRESS.get('running', False),
+    }
+    return render(request, 'SmartVest/backtest.html', context)
+
+
+@login_required
+@user_passes_test(lambda u: u.is_superuser)
+def backtest_progress_api(request):
+    """AJAX endpoint for polling backtest progress."""
+    return JsonResponse({
+        'percent': BACKTEST_PROGRESS.get('percent', 0),
+        'message': BACKTEST_PROGRESS.get('message', 'Idle'),
+        'running': BACKTEST_PROGRESS.get('running', False),
+    })
+
+
+@login_required
+@user_passes_test(lambda u: u.is_superuser)
+def backtest_results(request):
+    """Admin-only page showing all automated backtest results."""
+    from django.db.models import Avg, Count, Min, Max
+
+    # Filter by profile if requested
+    profile_filter = request.GET.get('profile', '')
+    runs = BacktestRun.objects.filter(status='done')
+    if profile_filter:
+        runs = runs.filter(profile_type=profile_filter)
+
+    # Summary stats
+    stats = runs.aggregate(
+        count=Count('id'),
+        avg_return=Avg('total_return'),
+        avg_sharpe=Avg('sharpe_ratio'),
+        avg_drawdown=Avg('max_drawdown'),
+        avg_volatility=Avg('annual_volatility'),
+        avg_alpha=Avg('alpha'),
+        best_return=Max('total_return'),
+        worst_return=Min('total_return'),
+    )
+
+    # Win rate (return > 0)
+    total_done = runs.count()
+    wins = runs.filter(total_return__gt=0).count()
+    win_rate = (wins / total_done * 100) if total_done > 0 else 0
+
+    # Per-profile breakdown
+    profile_stats = {}
+    for p in ['conservative', 'balanced', 'aggressive']:
+        p_runs = BacktestRun.objects.filter(status='done', profile_type=p)
+        p_count = p_runs.count()
+        if p_count > 0:
+            p_agg = p_runs.aggregate(
+                avg_return=Avg('total_return'),
+                avg_sharpe=Avg('sharpe_ratio'),
+                avg_drawdown=Avg('max_drawdown'),
+                wins=Count('id', filter=db_models.Q(total_return__gt=0)),
+            )
+            profile_stats[p] = {
+                'count': p_count,
+                'avg_return': p_agg['avg_return'],
+                'avg_sharpe': p_agg['avg_sharpe'],
+                'avg_drawdown': p_agg['avg_drawdown'],
+                'win_rate': (p_agg['wins'] / p_count * 100) if p_count > 0 else 0,
+            }
+
+    # Sorting
+    sort_by = request.GET.get('sort', '-created_at')
+    allowed_sorts = [
+        'name', '-name', 'total_return', '-total_return',
+        'sharpe_ratio', '-sharpe_ratio', 'max_drawdown', '-max_drawdown',
+        'created_at', '-created_at', 'start_date', '-start_date',
+        'cagr', '-cagr', 'alpha', '-alpha',
+    ]
+    if sort_by not in allowed_sorts:
+        sort_by = '-created_at'
+    runs = runs.order_by(sort_by)
+
+    context = {
+        'runs': runs,
+        'stats': stats,
+        'win_rate': round(win_rate, 1),
+        'profile_stats': profile_stats,
+        'current_profile': profile_filter,
+        'current_sort': sort_by,
+        'total_failed': BacktestRun.objects.filter(status='failed').count(),
+        'total_running': BacktestRun.objects.filter(status='running').count(),
+    }
+    return render(request, 'SmartVest/backtest_results.html', context)
+
+
+@login_required
+@user_passes_test(lambda u: u.is_superuser)
+def backtest_result_detail(request, pk):
+    """Detail view for a single backtest run — shows full charts and data."""
+    run = get_object_or_404(BacktestRun, pk=pk)
+
+    # Build a result dict matching the format used by backtest.html
+    result = {
+        'profile_type': run.profile_type,
+        'start_date': str(run.start_date),
+        'end_date': str(run.end_date),
+        'metrics': {
+            'total_return': run.total_return,
+            'cagr': run.cagr,
+            'sharpe_ratio': run.sharpe_ratio,
+            'sortino_ratio': run.sortino_ratio,
+            'max_drawdown': run.max_drawdown,
+            'max_drawdown_duration': run.max_drawdown_duration,
+            'calmar_ratio': run.calmar_ratio,
+            'annual_volatility': run.annual_volatility,
+            'alpha': run.alpha,
+            'beta': run.beta,
+            'benchmark_return': run.benchmark_return,
+            'outperformance': run.outperformance,
+            'final_value': run.final_value,
+            'n_trading_days': run.n_trading_days,
+        },
+        'equity_curve': run.equity_curve_json,
+        'benchmark_curve': run.benchmark_curve_json,
+        'snapshots': run.snapshots_json,
+    }
+
+    context = {
+        'run': run,
+        'result': result,
+    }
+    return render(request, 'SmartVest/backtest_result_detail.html', context)
+
+
+@login_required
+@user_passes_test(lambda u: u.is_superuser)
+def backtest_runner_status(request):
+    """AJAX endpoint: returns current status of the automated runner."""
+    running = BacktestRun.objects.filter(status='running').first()
+    done_count = BacktestRun.objects.filter(status='done').count()
+
+    if running:
+        return JsonResponse({
+            'running': True,
+            'name': running.name,
+            'profile': running.profile_type,
+            'start_date': str(running.start_date),
+            'end_date': str(running.end_date),
+            'done_count': done_count,
+        })
+    return JsonResponse({
+        'running': False,
+        'done_count': done_count,
+    })

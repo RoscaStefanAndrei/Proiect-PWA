@@ -1,0 +1,496 @@
+{% extends "base.html" %}
+
+{% block title %}{{ run.name }}{% endblock %}
+{% block header_title %}📊 {{ run.name }}{% endblock %}
+
+{% block content %}
+<style>
+    .backtest-card {
+        background: linear-gradient(135deg, #131622 0%, #1a1f2e 100%);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 16px;
+        padding: 32px;
+    }
+
+    .metric-card {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 14px;
+        padding: 20px;
+        text-align: center;
+        transition: all 0.3s;
+    }
+
+    .metric-card:hover {
+        border-color: rgba(40, 167, 69, 0.3);
+        transform: translateY(-2px);
+    }
+
+    .metric-value {
+        font-size: 1.8rem;
+        font-weight: 800;
+        margin-bottom: 4px;
+    }
+
+    .metric-value.positive {
+        color: #28a745;
+    }
+
+    .metric-value.negative {
+        color: #dc3545;
+    }
+
+    .metric-value.neutral {
+        color: #ffc107;
+    }
+
+    .metric-label {
+        color: #8da3b6;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .chart-container {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 14px;
+        padding: 24px;
+        margin-top: 20px;
+    }
+
+    .chart-container canvas {
+        width: 100% !important;
+        max-height: 400px;
+    }
+
+    .snapshot-table {
+        font-size: 0.85rem;
+    }
+
+    .snapshot-table th {
+        color: #8da3b6;
+        border-color: rgba(255, 255, 255, 0.1);
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.5px;
+    }
+
+    .snapshot-table td {
+        border-color: rgba(255, 255, 255, 0.05);
+        vertical-align: middle;
+    }
+
+    .badge-ticker {
+        background: rgba(40, 167, 69, 0.15);
+        color: #28a745;
+        padding: 3px 8px;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        margin: 2px;
+        display: inline-block;
+    }
+
+    .profile-badge {
+        display: inline-block;
+        padding: 4px 14px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+
+    .profile-badge.conservative {
+        background: rgba(23, 162, 184, 0.2);
+        color: #17a2b8;
+    }
+
+    .profile-badge.balanced {
+        background: rgba(40, 167, 69, 0.2);
+        color: #28a745;
+    }
+
+    .profile-badge.aggressive {
+        background: rgba(220, 53, 69, 0.2);
+        color: #dc3545;
+    }
+
+    .back-link {
+        color: #8da3b6;
+        text-decoration: none;
+        font-size: 0.85rem;
+        transition: color 0.2s;
+    }
+
+    .back-link:hover {
+        color: #28a745;
+    }
+</style>
+
+<!-- Chart.js CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<div class="row">
+    <div class="col-lg-10 mx-auto">
+
+        <!-- Back link -->
+        <a href="{% url 'backtest-results' %}" class="back-link mb-3 d-inline-block">
+            <i class="fas fa-arrow-left me-2"></i>Înapoi la rezultate
+        </a>
+
+        <!-- Summary Header -->
+        <div class="backtest-card mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="fw-bold mb-0">
+                    <i class="fas fa-chart-line text-success me-2"></i>{{ run.name }}
+                </h5>
+                <div>
+                    <span class="profile-badge {{ result.profile_type }}">
+                        {{ result.profile_type }}
+                    </span>
+                    <span class="text-muted ms-3">
+                        {{ result.start_date }} → {{ result.end_date }}
+                    </span>
+                </div>
+            </div>
+
+            <!-- Metrics Cards Row 1 -->
+            <div class="row g-3 mb-4">
+                <div class="col-6 col-md-3">
+                    <div class="metric-card">
+                        <div class="metric-value
+ {% if result.metrics.total_return >= 0 %}positive{% else %}negative{% endif %}">
+                            {{ result.metrics.total_return|floatformat:1 }}%
+                        </div>
+                        <div class="metric-label">Randament Total</div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="metric-card">
+                        <div class="metric-value
+ {% if result.metrics.cagr >= 0 %}positive{% else %}negative{% endif %}">
+                            {{ result.metrics.cagr|floatformat:1 }}%
+                        </div>
+                        <div class="metric-label">CAGR</div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="metric-card">
+                        <div class="metric-value neutral">
+                            {{ result.metrics.sharpe_ratio|floatformat:2 }}
+                        </div>
+                        <div class="metric-label">Sharpe Ratio</div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="metric-card">
+                        <div class="metric-value negative">
+                            {{ result.metrics.max_drawdown|floatformat:1 }}%
+                        </div>
+                        <div class="metric-label">Max Drawdown</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Metrics Cards Row 2 -->
+            <div class="row g-3">
+                <div class="col-6 col-md-2">
+                    <div class="metric-card">
+                        <div class="metric-value" style="font-size:1.3rem; color:#17a2b8;">
+                            ${{ result.metrics.final_value|floatformat:0 }}
+                        </div>
+                        <div class="metric-label">Valoare Finală</div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="metric-card">
+                        <div class="metric-value neutral" style="font-size:1.3rem;">
+                            {{ result.metrics.annual_volatility|floatformat:1 }}%
+                        </div>
+                        <div class="metric-label">Volatilitate</div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="metric-card">
+                        <div class="metric-value" style="font-size:1.3rem; color:#6f42c1;">
+                            {{ result.metrics.sortino_ratio|floatformat:2 }}
+                        </div>
+                        <div class="metric-label">Sortino</div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="metric-card">
+                        <div class="metric-value" style="font-size:1.3rem; color:#fd7e14;">
+                            {{ result.metrics.calmar_ratio|floatformat:2 }}
+                        </div>
+                        <div class="metric-label">Calmar</div>
+                    </div>
+                </div>
+                {% if result.metrics.alpha != None %}
+                <div class="col-6 col-md-2">
+                    <div class="metric-card">
+                        <div class="metric-value
+ {% if result.metrics.alpha >= 0 %}positive{% else %}negative{% endif %}" style="font-size:1.3rem;">
+                            {{ result.metrics.alpha|floatformat:1 }}%
+                        </div>
+                        <div class="metric-label">Alpha</div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="metric-card">
+                        <div class="metric-value" style="font-size:1.3rem; color:#8da3b6;">
+                            {{ result.metrics.beta|floatformat:2 }}
+                        </div>
+                        <div class="metric-label">Beta</div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Equity Curve Chart -->
+        {% if result.equity_curve.dates %}
+        <div class="chart-container">
+            <h6 class="fw-bold mb-3">
+                <i class="fas fa-chart-area text-success me-2"></i>
+                Evoluția Portofoliului vs S&P 500
+            </h6>
+            <canvas id="equityChart"></canvas>
+        </div>
+
+        <!-- Drawdown Chart -->
+        <div class="chart-container">
+            <h6 class="fw-bold mb-3">
+                <i class="fas fa-chart-bar text-danger me-2"></i>
+                Drawdown
+            </h6>
+            <canvas id="drawdownChart"></canvas>
+        </div>
+        {% endif %}
+
+        <!-- Portfolio Snapshots -->
+        {% if result.snapshots %}
+        <div class="backtest-card mt-4">
+            <h6 class="fw-bold mb-3">
+                <i class="fas fa-sync-alt text-success me-2"></i>
+                Rebalansări ({{ result.snapshots|length }})
+            </h6>
+            <div class="table-responsive">
+                <table class="table table-dark snapshot-table">
+                    <thead>
+                        <tr>
+                            <th>Data</th>
+                            <th>Valoare Portofoliu</th>
+                            <th>Nr. Acțiuni</th>
+                            <th>Alocări</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for snap in result.snapshots %}
+                        <tr>
+                            <td class="fw-bold">
+                                {{ snap.date }}
+                            </td>
+                            <td>
+                                ${{ snap.portfolio_value|floatformat:0 }}
+                            </td>
+                            <td>
+                                {{ snap.n_stocks }}
+                            </td>
+                            <td>
+                                {% for ticker, weight in snap.allocations.items %}
+                                <span class="badge-ticker">
+                                    {{ ticker }} {{ weight|floatformat:0 }}%
+                                </span>
+                                {% empty %}
+                                <span class="text-muted">Cash</span>
+                                {% endfor %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Benchmark comparison -->
+        {% if result.metrics.benchmark_return != None %}
+        <div class="backtest-card mt-4">
+            <h6 class="fw-bold mb-3">
+                <i class="fas fa-balance-scale text-info me-2"></i>
+                Comparație cu S&P 500
+            </h6>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <div class="metric-card">
+                        <div class="metric-value
+ {% if result.metrics.total_return >= 0 %}positive{% else %}negative{% endif %}">
+                            {{ result.metrics.total_return|floatformat:1 }}%
+                        </div>
+                        <div class="metric-label">Portofoliu SmartVest</div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="metric-card">
+                        <div class="metric-value" style="color: #ffc107;">
+                            {{ result.metrics.benchmark_return|floatformat:1 }}%
+                        </div>
+                        <div class="metric-label">S&P 500 (SPY)</div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="metric-card">
+                        <div class="metric-value
+ {% if result.metrics.outperformance >= 0 %}positive{% else %}negative{% endif %}">
+                            {% if result.metrics.outperformance >= 0 %}+{% endif %}{{
+                            result.metrics.outperformance|floatformat:1 }}%
+                        </div>
+                        <div class="metric-label">Supraperformanță</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+    </div>
+</div>
+
+{% if result.equity_curve.dates %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const eqDates = {{ result.equity_curve.dates| safe
+    }};
+    const eqValues = {{ result.equity_curve.values| safe }};
+
+    // Equity curve chart
+    new Chart(document.getElementById('equityChart').getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: eqDates,
+            datasets: [
+                {
+                    label: 'Portofoliu SmartVest',
+                    data: eqValues,
+                    borderColor: '#28a745',
+                    backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 0,
+                    borderWidth: 2.5,
+                },
+                {% if result.benchmark_curve.dates %}
+                {
+            label: 'S&P 500 (SPY)',
+            data: {{ result.benchmark_curve.values | safe }},
+        borderColor: '#ffc107',
+        backgroundColor: 'rgba(255, 193, 7, 0.05)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 0,
+        borderWidth: 2,
+        borderDash: [5, 3],
+                }
+        {% endif %}
+            ]
+        },
+        options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        aspectRatio: 2.5,
+        interaction: { intersect: false, mode: 'index' },
+        plugins: {
+            legend: { labels: { color: '#8da3b6', font: { size: 12 } } },
+            tooltip: {
+                backgroundColor: '#1a1f2e',
+                titleColor: '#fff',
+                bodyColor: '#8da3b6',
+                borderColor: 'rgba(255,255,255,0.1)',
+                borderWidth: 1,
+                callbacks: {
+                    label: function (ctx) {
+                        return ctx.dataset.label + ': $' + ctx.parsed.y.toLocaleString();
+                    }
+                }
+            }
+        },
+        scales: {
+            x: {
+                ticks: { color: '#6c7a89', maxTicksLimit: 12, font: { size: 10 } },
+                grid: { color: 'rgba(255,255,255,0.03)' }
+            },
+            y: {
+                ticks: {
+                    color: '#6c7a89',
+                    callback: function (v) { return '$' + v.toLocaleString(); },
+                    font: { size: 10 }
+                },
+                grid: { color: 'rgba(255,255,255,0.05)' }
+            }
+        }
+    }
+    });
+
+    // Drawdown chart
+    let runningMax = eqValues[0];
+    const ddValues = eqValues.map(v => {
+        if (v > runningMax) runningMax = v;
+        return ((v / runningMax) - 1) * 100;
+    });
+
+    new Chart(document.getElementById('drawdownChart').getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: eqDates,
+            datasets: [{
+                label: 'Drawdown',
+                data: ddValues,
+                borderColor: '#dc3545',
+                backgroundColor: 'rgba(220, 53, 69, 0.15)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 0,
+                borderWidth: 1.5,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            aspectRatio: 3,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#1a1f2e',
+                    titleColor: '#fff',
+                    bodyColor: '#dc3545',
+                    callbacks: {
+                        label: function (ctx) {
+                            return 'Drawdown: ' + ctx.parsed.y.toFixed(2) + '%';
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: { color: '#6c7a89', maxTicksLimit: 12, font: { size: 10 } },
+                    grid: { color: 'rgba(255,255,255,0.03)' }
+                },
+                y: {
+                    ticks: {
+                        color: '#6c7a89',
+                        callback: function (v) { return v.toFixed(0) + '%'; },
+                        font: { size: 10 }
+                    },
+                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    max: 0,
+                }
+            }
+        }
+    });
+});
+</script>
+{% endif %}
+
+{% endblock %}

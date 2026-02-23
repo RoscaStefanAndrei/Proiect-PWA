@@ -1,64 +1,72 @@
 {% extends 'base.html' %}
 
-{% block title %}Portfolio Performance{% endblock %}
+{% block title %}Performanța Portofoliilor{% endblock %}
+{% block header_title %}Performanță{% endblock %}
 
 {% block content %}
-<div class="container py-4">
-    <h2 class="mb-4">Portfolio Performance Tracking</h2>
-
-    {% if performance_data %}
-    <div class="row">
+<div class="row">
+    <div class="col-12">
+        {% if performance_data %}
         {% for data in performance_data %}
-        <div class="col-md-6 mb-4">
-            <div class="card shadow-sm h-100">
-                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">{{ data.portfolio.name }}</h5>
-                    <small>{{ data.portfolio.created_at|date:"M d, Y" }}</small>
-                </div>
-                <div class="card-body">
-                    <div class="row text-center mb-3">
-                        <div class="col-6">
-                            <small class="text-muted d-block uppercase">Initial Investment</small>
-                            <span class="h5">${{ data.initial_value|floatformat:2 }}</span>
-                        </div>
-                        <div class="col-6">
-                            <small class="text-muted d-block uppercase">Current Value</small>
-                            <span class="h5 fw-bold">${{ data.current_value|floatformat:2 }}</span>
-                        </div>
+        <div class="card mb-2 bg-dark-card border border-secondary shadow-sm portfolio-card">
+            <a href="{% url 'portfolio-detail' data.portfolio.id %}" class="text-decoration-none">
+                <div class="card-body py-2 px-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0 text-white fw-bold">
+                            {{ data.portfolio.name }}
+                        </h6>
+                        <small class="text-muted" style="font-size:0.7rem">
+                            {{ data.portfolio.created_at|date:"d M Y" }}
+                        </small>
                     </div>
-
-                    <hr>
-
-                    <div class="row text-center">
-                        <div class="col-6">
-                            <small class="text-muted d-block uppercase">Profit / Loss</small>
-                            <span class="h4 {% if data.profit_loss >= 0 %}text-success{% else %}text-danger{% endif %}">
+                    <div class="d-flex gap-3 flex-wrap">
+                        <div class="metric-pill">
+                            <span class="metric-label">Valoare</span>
+                            <span class="metric-value text-white">
+                                ${{ data.current_value|floatformat:2 }}
+                            </span>
+                        </div>
+                        <div class="metric-pill">
+                            <span class="metric-label">Open P/L</span>
+                            <span class="metric-value
+ {% if data.profit_loss >= 0 %}text-success{% else %}text-danger{% endif %}">
                                 {% if data.profit_loss >= 0 %}+{% endif %}${{ data.profit_loss|floatformat:2 }}
+                                <small class="ms-1">/
+                                    {% if data.return_pct >= 0 %}+{% endif %}{{ data.return_pct|floatformat:2 }}%
+                                </small>
                             </span>
                         </div>
-                        <div class="col-6">
-                            <small class="text-muted d-block uppercase">Return</small>
-                            <span class="h4 {% if data.return_pct >= 0 %}text-success{% else %}text-danger{% endif %}">
-                                {% if data.return_pct >= 0 %}+{% endif %}{{ data.return_pct|floatformat:2 }}%
+                        <div class="metric-pill">
+                            <span class="metric-label">Daily P/L</span>
+                            <span class="metric-value
+ {% if data.total_daily_pl >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                {% if data.total_daily_pl >= 0 %}+{% endif %}${{ data.total_daily_pl|floatformat:2 }}
+                                <small class="ms-1">/
+                                    {% if data.daily_pl_pct >= 0 %}+{% endif %}{{ data.daily_pl_pct|floatformat:2 }}%
+                                </small>
+                            </span>
+                        </div>
+                        <div class="metric-pill ms-auto">
+                            <span class="metric-label">Investiție</span>
+                            <span class="metric-value text-muted">
+                                ${{ data.initial_value|floatformat:2 }}
                             </span>
                         </div>
                     </div>
                 </div>
-                <div class="card-footer bg-light text-end">
-                    <a href="{% url 'portfolio-detail' data.portfolio.id %}"
-                        class="btn btn-sm btn-outline-secondary">View Details</a>
-                </div>
-            </div>
+            </a>
         </div>
         {% endfor %}
+        {% else %}
+        <div class="text-center py-5 bg-dark-card rounded-3">
+            <i class="fas fa-chart-line fa-3x text-muted mb-3"></i>
+            <h5 class="text-white fw-bold">Nu sunt portofolii</h5>
+            <p class="text-muted mb-4">
+                Salvează un portofoliu pentru a-i urmări performanța.
+            </p>
+            <a href="{% url 'select-portfolio-type' %}" class="btn btn-primary rounded-pill px-4">Analiză Nouă</a>
+        </div>
+        {% endif %}
     </div>
-    {% else %}
-    <div class="alert alert-info">
-        <h4 class="alert-heading">No Portfolios Found!</h4>
-        <p>You haven't saved any portfolios yet. Run an analysis and save a portfolio to track its performance.</p>
-        <hr>
-        <a href="{% url 'select-portfolio-type' %}" class="btn btn-primary">Start Analysis</a>
-    </div>
-    {% endif %}
 </div>
 {% endblock %}

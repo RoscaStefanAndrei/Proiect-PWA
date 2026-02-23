@@ -786,7 +786,7 @@ def calculeaza_portofoliu(tickere_finale, profile_type="balanced"):
 # PIPELINE PRINCIPAL (IMPORTABIL)
 # ============================================================================
 
-def run_full_pipeline(profile_type="balanced", budget=10000.0, filters_dict=None):
+def run_full_pipeline(profile_type="balanced", budget=10000.0, filters_dict=None, skip_industry_filter=False):
     """
     Rulează întreg pipeline-ul de selecție a acțiunilor.
 
@@ -794,6 +794,7 @@ def run_full_pipeline(profile_type="balanced", budget=10000.0, filters_dict=None
         profile_type: "conservative", "balanced", sau "aggressive"
         budget: Bugetul total de investit (USD)
         filters_dict: Dict custom de filtre Finviz (opțional, override profil)
+        skip_industry_filter: Dacă True, sare peste Pasul 5 (folosit de unicorn scanner)
 
     Returns:
         dict cu cheile:
@@ -959,14 +960,19 @@ def run_full_pipeline(profile_type="balanced", budget=10000.0, filters_dict=None
     df_companii_obv.to_csv("pasul_4_companii_obv.csv", index=False)
 
     # --- PASUL 5: FILTRAREA PUTERII INDUSTRIEI ---
-    df_companii_finale = filtreaza_puterea_industriei(df_companii_obv)
+    if skip_industry_filter:
+        print("\n===== PASUL 5: SKIPPED (skip_industry_filter=True) =====")
+        df_companii_finale = df_companii_obv
+    else:
+        df_companii_finale = filtreaza_puterea_industriei(df_companii_obv)
 
-    if df_companii_finale.empty:
-        result['error'] = "Pasul 5 (Puterea Industriei) a eliminat toate companiile."
-        print(f"\n{result['error']}")
-        return result
+        if df_companii_finale.empty:
+            result['error'] = "Pasul 5 (Puterea Industriei) a eliminat toate companiile."
+            print(f"\n{result['error']}")
+            return result
 
-    print(f"\n===== REZUMAT PASUL 5: {len(df_companii_finale)} COMPANII SELECTATE =====")
+        print(f"\n===== REZUMAT PASUL 5: {len(df_companii_finale)} COMPANII SELECTATE =====")
+
     coloane_de_afisat = ["Ticker", "Company", "Sector", "Industry", "Price", "Change"]
     coloane_existente = [
         col for col in coloane_de_afisat if col in df_companii_finale.columns

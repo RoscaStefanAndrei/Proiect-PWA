@@ -37,14 +37,44 @@
         </div>
         {% endif %}
 
+        <!-- Relax Filters Prompt -->
+        {% if show_relax_prompt and not scan_results %}
+        <div class="card bg-dark border-info mb-4">
+            <div class="card-body text-center py-4">
+                <i class="fas fa-filter fa-2x text-info mb-3"></i>
+                <h5 class="text-white">Vrei sa relaxam putin filtrele?</h5>
+                <p class="text-muted">Exista companii care au trecut 2 din 3 criterii tehnice unicorn.</p>
+                <form method="post" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" name="relax_filters" class="btn btn-info btn-lg">
+                        <i class="fas fa-expand-arrows-alt me-2"></i>Relaxeaza Filtrele (2/3)
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Results Table -->
         {% if scan_results %}
         <div class="card bg-dark border-secondary">
-            <div class="card-header bg-dark border-secondary">
+            <div class="card-header bg-dark border-secondary d-flex justify-content-between align-items-center">
                 <h5 class="mb-0 text-white">
                     <i class="fas fa-chart-line text-success me-2"></i>
-                    Candidați Unicorn ({{ scan_results|length }} găsiți)
+                    Candidati Unicorn ({{ scan_results|length }} gasiti)
+                    {% if is_relaxed %}
+                    <span class="badge bg-info ms-2">Filtre relaxate (2/3)</span>
+                    {% elif has_perfect_results %}
+                    <span class="badge bg-warning text-dark ms-2">Scor Perfect (3/3)</span>
+                    {% endif %}
                 </h5>
+                {% if show_relax_prompt and has_perfect_results and not is_relaxed %}
+                <form method="post" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" name="relax_filters" class="btn btn-sm btn-outline-info">
+                        <i class="fas fa-expand-arrows-alt me-1"></i>Include si 2/3
+                    </button>
+                </form>
+                {% endif %}
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
@@ -53,12 +83,12 @@
                             <tr>
                                 <th>Ticker</th>
                                 <th>Companie</th>
-                                <th>Preț ($)</th>
+                                <th>Pret ($)</th>
                                 <th>RSI</th>
                                 <th>Vol. Ratio</th>
                                 <th>% din 52W High</th>
-                                <th>Scor 🦄</th>
-                                <th>Acțiune</th>
+                                <th>Scor</th>
+                                <th>Actiune</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -96,7 +126,7 @@
                                 </td>
                                 <td>
                                     {% if stock.Unicorn_Score >= 3 %}
-                                    <span class="badge bg-warning text-dark fs-6">🦄 {{ stock.Unicorn_Score }}/3</span>
+                                    <span class="badge bg-warning text-dark fs-6">{{ stock.Unicorn_Score }}/3</span>
                                     {% elif stock.Unicorn_Score >= 2 %}
                                     <span class="badge bg-info fs-6">{{ stock.Unicorn_Score }}/3</span>
                                     {% else %}
@@ -106,7 +136,7 @@
                                 <td>
                                     {% if stock.Ticker in watched_tickers %}
                                     <span class="badge bg-success">
-                                        <i class="fas fa-eye me-1"></i>În Watchlist
+                                        <i class="fas fa-eye me-1"></i>In Watchlist
                                     </span>
                                     {% else %}
                                     <form method="post" action="{% url 'add-to-watchlist' stock.Ticker %}"
@@ -125,12 +155,12 @@
                 </div>
             </div>
         </div>
-        {% else %}
+        {% elif not error_message and not show_relax_prompt %}
         <div class="card bg-dark border-secondary">
             <div class="card-body text-center py-5">
                 <i class="fas fa-horse-head fa-4x text-muted mb-3"></i>
-                <h5 class="text-muted">Nicio scanare efectuată</h5>
-                <p class="text-muted">Apasă pe "Rulează Scanare" pentru a căuta unicorni 🦄</p>
+                <h5 class="text-muted">Nicio scanare efectuata</h5>
+                <p class="text-muted">Apasa pe "Ruleaza Scanare" pentru a cauta unicorni</p>
             </div>
         </div>
         {% endif %}

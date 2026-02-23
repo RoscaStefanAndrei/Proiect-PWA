@@ -1,46 +1,101 @@
 {% extends 'base.html' %}
 
-{% block title %}{{ object.name }} - Details{% endblock %}
+{% block title %}{{ object.name }}{% endblock %}
+{% block header_title %}{{ object.name }}{% endblock %}
 
 {% block content %}
-<h1 class="mb-4">{{ object.name }}</h1>
-<p class="text-muted">Created on {{ object.created_at|date:"F d, Y" }}</p>
-
-{% if object.description %}
-<div class="card shadow mb-4">
-    <div class="card-header py-3">
-        <h6 class="m-0 font-weight-bold text-primary">Description</h6>
-    </div>
-    <div class="card-body">
-        <p>{{ object.description|linebreaks }}</p>
+{% if perf %}
+<!-- Summary Bar -->
+<div class="card bg-dark-card border border-secondary mb-3">
+    <div class="card-body py-2 px-3">
+        <div class="d-flex gap-4 flex-wrap align-items-center">
+            <div class="metric-pill">
+                <span class="metric-label">Valoare Piață</span>
+                <span class="metric-value text-white fw-bold" style="font-size:1.1rem">
+                    ${{ perf.current_value|floatformat:2 }}
+                </span>
+            </div>
+            <div class="metric-pill">
+                <span class="metric-label">Open P/L</span>
+                <span class="metric-value
+ {% if perf.profit_loss >= 0 %}text-success{% else %}text-danger{% endif %}" style="font-size:1.1rem">
+                    {% if perf.profit_loss >= 0 %}+{% endif %}${{ perf.profit_loss|floatformat:2 }}
+                    <small class="ms-1">/
+                        {% if perf.return_pct >= 0 %}+{% endif %}{{ perf.return_pct|floatformat:2 }}%
+                    </small>
+                </span>
+            </div>
+            <div class="metric-pill">
+                <span class="metric-label">Daily P/L</span>
+                <span class="metric-value
+ {% if perf.total_daily_pl >= 0 %}text-success{% else %}text-danger{% endif %}" style="font-size:1.1rem">
+                    {% if perf.total_daily_pl >= 0 %}+{% endif %}${{ perf.total_daily_pl|floatformat:2 }}
+                    <small class="ms-1">/
+                        {% if perf.daily_pl_pct >= 0 %}+{% endif %}{{ perf.daily_pl_pct|floatformat:2 }}%
+                    </small>
+                </span>
+            </div>
+            <div class="metric-pill ms-auto">
+                <span class="metric-label">Investiție Inițială</span>
+                <span class="metric-value text-muted">
+                    ${{ perf.initial_value|floatformat:2 }}
+                </span>
+            </div>
+        </div>
     </div>
 </div>
-{% endif %}
 
-<div class="card shadow mb-4">
-    <div class="card-header py-3 bg-success text-white">
-        <h5 class="m-0 font-weight-bold">Saved Allocation</h5>
-    </div>
-    <div class="card-body">
+<!-- Holdings Table -->
+<div class="card bg-dark-card border border-secondary mb-3">
+    <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-bordered table-striped" width="100%" cellspacing="0">
+            <table class="table table-dark table-hover holdings-table mb-0">
                 <thead>
-                    <tr>
+                    <tr class="text-muted border-bottom border-secondary">
                         <th>Ticker</th>
-                        <th>Weight</th>
-                        <th>Price</th>
-                        <th>Investment Value ($)</th>
-                        <th>Shares</th>
+                        <th class="text-end">Pondere</th>
+                        <th class="text-end">Cantitate</th>
+                        <th class="text-end">Preț Mediu</th>
+                        <th class="text-end">Preț Actual</th>
+                        <th class="text-end">Valoare Piață</th>
+                        <th class="text-end">Daily P/L</th>
+                        <th class="text-end">Net P/L %</th>
+                        <th class="text-end">Net P/L</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for row in object.portfolio_data %}
-                    <tr>
-                        <td><strong>{{ row.Ticker }}</strong></td>
-                        <td>{{ row.Pondere }}</td>
-                        <td>{{ row.Price }}</td>
-                        <td>{{ row.Valoare_Investitie_USD }}</td>
-                        <td>{{ row.Nr_Actiuni }}</td>
+                    {% for h in perf.holdings %}
+                    <tr class="border-bottom border-secondary">
+                        <td class="fw-bold text-white">
+                            {{ h.ticker }}
+                        </td>
+                        <td class="text-end text-muted">
+                            {{ h.weight|floatformat:2 }}%
+                        </td>
+                        <td class="text-end">
+                            {{ h.qty|floatformat:2 }}
+                        </td>
+                        <td class="text-end">
+                            ${{ h.avg_price|floatformat:2 }}
+                        </td>
+                        <td class="text-end">
+                            ${{ h.current_price|floatformat:2 }}
+                        </td>
+                        <td class="text-end">
+                            ${{ h.market_value|floatformat:2 }}
+                        </td>
+                        <td class="text-end
+ {% if h.daily_pl >= 0 %}text-success{% else %}text-danger{% endif %}">
+                            {% if h.daily_pl >= 0 %}+{% endif %}${{ h.daily_pl|floatformat:2 }}
+                        </td>
+                        <td class="text-end
+ {% if h.open_pl_pct >= 0 %}text-success{% else %}text-danger{% endif %}">
+                            {% if h.open_pl_pct >= 0 %}+{% endif %}{{ h.open_pl_pct|floatformat:2 }}%
+                        </td>
+                        <td class="text-end fw-bold
+ {% if h.open_pl >= 0 %}text-success{% else %}text-danger{% endif %}">
+                            {% if h.open_pl >= 0 %}+{% endif %}${{ h.open_pl|floatformat:2 }}
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -48,9 +103,29 @@
         </div>
     </div>
 </div>
+{% else %}
+<div class="alert alert-info">
+    <p>Nu s-au putut încărca datele de performanță.</p>
+</div>
+{% endif %}
 
-<div class="text-center mb-4">
-    <a href="{% url 'portfolio-list' %}" class="btn btn-secondary">Back to List</a>
-    <a href="{% url 'portfolio-delete' object.id %}" class="btn btn-danger">Delete Portfolio</a>
+{% if object.description %}
+<div class="card bg-dark-card border border-secondary mb-3">
+    <div class="card-body py-2 px-3">
+        <small class="text-muted d-block mb-1">Descriere</small>
+        <p class="text-light mb-0 small">
+            {{ object.description|linebreaks }}
+        </p>
+    </div>
+</div>
+{% endif %}
+
+<div class="d-flex gap-2 mb-4">
+    <a href="{% url 'portfolio-list' %}" class="btn btn-sm btn-outline-light rounded-pill px-3">
+        <i class="fas fa-arrow-left me-1"></i>Înapoi
+    </a>
+    <a href="{% url 'portfolio-delete' object.id %}" class="btn btn-sm btn-outline-danger rounded-pill px-3">
+        <i class="fas fa-trash-alt me-1"></i>Șterge
+    </a>
 </div>
 {% endblock %}

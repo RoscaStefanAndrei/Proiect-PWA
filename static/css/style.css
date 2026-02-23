@@ -133,3 +133,72 @@ body {
 .hover-bg:hover h5 {
     color: #28a745 !important;
 }
+
+/* =========================
+   PORTFOLIO COMPACT STYLES
+   ========================= */
+
+/* Compact portfolio cards */
+.portfolio-card {
+    border-radius: 10px;
+    transition: all 0.2s ease;
+}
+
+.portfolio-card:hover {
+    border-color: rgba(40, 167, 69, 0.4) !important;
+    box-shadow: 0 2px 12px rgba(40, 167, 69, 0.1);
+}
+
+/* Metric pill — small stat block with label + value */
+.metric-pill {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.metric-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.metric-value {
+    font-size: 0.85rem;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.metric-value small {
+    font-size: 0.72rem;
+    font-weight: 500;
+    opacity: 0.85;
+}
+
+/* Compact holdings table */
+.holdings-table {
+    font-size: 0.8rem;
+    background-color: transparent !important;
+}
+
+.holdings-table thead th {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.5rem 0.6rem;
+    font-weight: 600;
+    white-space: nowrap;
+    border-top: none;
+    background-color: rgba(255, 255, 255, 0.03);
+}
+
+.holdings-table tbody td {
+    padding: 0.45rem 0.6rem;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.holdings-table tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.04) !important;
+}

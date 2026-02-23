@@ -55,6 +55,14 @@
                     class="list-group-item list-group-item-action bg-transparent text-white fw-bold mb-2 sidebar-link">
                     <i class="fas fa-user-shield me-3"></i>Admin Panel
                 </a>
+                <a href="{% url 'backtest' %}"
+                    class="list-group-item list-group-item-action bg-transparent text-white fw-bold mb-2 sidebar-link">
+                    <i class="fas fa-flask me-3"></i>Backtesting
+                </a>
+                <a href="{% url 'backtest-results' %}"
+                    class="list-group-item list-group-item-action bg-transparent text-white fw-bold mb-2 sidebar-link">
+                    <i class="fas fa-chart-bar me-3"></i>Rezultate Backtesting
+                </a>
                 {% endif %}
             </div>
 

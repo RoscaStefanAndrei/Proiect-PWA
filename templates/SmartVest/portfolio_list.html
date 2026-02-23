@@ -6,30 +6,65 @@
 {% block content %}
 <div class="row">
     <div class="col-12">
-        {% for portfolio in portfolios %}
-        <div class="card mb-3 bg-dark-card border border-secondary shadow-sm">
-            <div
-                class="card-header bg-transparent border-bottom border-secondary d-flex justify-content-between align-items-center">
-                <h5 class="mb-0 text-white fw-bold">
-                    {{ portfolio.name }}
-                </h5>
-                <small class="text-muted">{{ portfolio.created_at|date:"d M Y" }}</small>
-            </div>
-            <div class="card-body">
-                <p class="card-text text-light">{{ portfolio.description|linebreaks }}</p>
-                <div class="d-flex justify-content-end gap-2">
-                    <a href="{% url 'portfolio-detail' portfolio.id %}" class="btn btn-sm btn-outline-light">Detalii</a>
-                    <a href="{% url 'portfolio-delete' portfolio.id %}" class="btn btn-sm btn-outline-danger">Șterge</a>
+        {% if performance_data %}
+        {% for item in performance_data %}
+        <div class="card mb-2 bg-dark-card border border-secondary shadow-sm portfolio-card">
+            <a href="{% url 'portfolio-detail' item.portfolio.id %}" class="text-decoration-none">
+                <div class="card-body py-2 px-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0 text-white fw-bold">
+                            {{ item.portfolio.name }}
+                        </h6>
+                        <small class="text-muted" style="font-size:0.7rem">
+                            {{ item.portfolio.created_at|date:"d M Y" }}
+                        </small>
+                    </div>
+                    <div class="d-flex gap-3 flex-wrap">
+                        <div class="metric-pill">
+                            <span class="metric-label">Valoare</span>
+                            <span class="metric-value text-white">
+                                ${{ item.current_value|floatformat:2 }}
+                            </span>
+                        </div>
+                        <div class="metric-pill">
+                            <span class="metric-label">Open P/L</span>
+                            <span class="metric-value
+ {% if item.profit_loss >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                {% if item.profit_loss >= 0 %}+{% endif %}${{ item.profit_loss|floatformat:2 }}
+                                <small class="ms-1">/
+                                    {% if item.return_pct >= 0 %}+{% endif %}{{ item.return_pct|floatformat:2 }}%
+                                </small>
+                            </span>
+                        </div>
+                        <div class="metric-pill">
+                            <span class="metric-label">Daily P/L</span>
+                            <span class="metric-value
+ {% if item.total_daily_pl >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                {% if item.total_daily_pl >= 0 %}+{% endif %}${{ item.total_daily_pl|floatformat:2 }}
+                                <small class="ms-1">/
+                                    {% if item.daily_pl_pct >= 0 %}+{% endif %}{{ item.daily_pl_pct|floatformat:2 }}%
+                                </small>
+                            </span>
+                        </div>
+                    </div>
                 </div>
+            </a>
+            <div class="card-footer bg-transparent border-top border-secondary py-1 px-3 d-flex justify-content-end">
+                <a href="{% url 'portfolio-delete' item.portfolio.id %}" class="btn btn-link btn-sm text-danger p-0"
+                    style="font-size:0.75rem">
+                    <i class="fas fa-trash-alt me-1"></i>Șterge
+                </a>
             </div>
         </div>
-        {% empty %}
+        {% endfor %}
+
+        {% else %}
         <div class="text-center py-5">
             <i class="fas fa-folder-open fa-3x text-muted mb-3"></i>
             <p class="text-muted">Nu ai salvat niciun portofoliu momentan.</p>
             <a href="{% url 'run-analysis' %}" class="btn btn-primary rounded-pill px-4">Analiză Nouă</a>
         </div>
-        {% endfor %}
+        {% endif %}
     </div>
 </div>
 {% endblock %}
