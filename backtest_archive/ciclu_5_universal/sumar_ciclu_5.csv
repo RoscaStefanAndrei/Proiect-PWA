@@ -1,0 +1,13 @@
+Key,Value
+Completed,200
+Failed,0
+Win Rate,129/200 (64.5%)
+Beat SPY,53/200 (26.5%)
+Avg Return,5.60%
+Med Return,4.52%
+95% CI Return,"[3.39%, 7.82%]"
+Cash Drag,37/894 (4.1%)
+Unique Stocks,1127
+Date,2026-02-25
+Version,Ciclu 5 - Universal momentum + reduced cash drag
+Sample Size,"200 (statistically significant, power=0.80)"

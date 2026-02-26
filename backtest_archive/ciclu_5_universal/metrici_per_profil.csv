@@ -1,0 +1,4 @@
+Profile,N,Avg_Ret%,Med_Ret%,Win%,BeatSPY%,Avg_Sharpe,Med_Sharpe,Avg_DD%,Avg_Vol%,Avg_Alpha%,Avg_Outperf%,Avg_Stocks,Avg_Beta
+Conservative,73,3.97,5.02,67.1,28.8,0.1,0.14,-14.8,16.01,-5.78,-10.23,11.2,0.57
+Balanced,64,2.61,1.21,57.8,18.8,-0.11,-0.11,-16.47,16.75,-7.73,-13.77,6.8,0.53
+Aggressive,63,10.54,6.59,68.3,31.7,0.34,0.25,-17.72,20.57,-3.46,-7.17,9.6,0.7

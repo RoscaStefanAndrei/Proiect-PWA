@@ -287,36 +287,40 @@ def filtreaza_companii_hist(tickers, sector_map, sectors, fundamentals, price_df
                     continue
 
         # --- Dividend Yield (now PIT: trailing 12M dividends / price) ---
-        if require_dividend:
+        # Only apply if the filter is required AND the metric IS available
+        if require_dividend and 'dividendYield' in fund:
             div_yield = fund.get('dividendYield', 0) or 0
             if div_yield <= 0:
                 continue
 
         # --- Return on Equity (now PIT: TTM NetIncome / Equity) ---
-        roe = fund.get('returnOnEquity', 0) or 0
-        if roe < min_roe:
-            continue
+        # Skip this filter if ROE couldn't be computed (no quarterly data)
+        if min_roe > 0 and 'returnOnEquity' in fund:
+            roe = fund.get('returnOnEquity', 0) or 0
+            if roe < min_roe:
+                continue
 
         # --- Net Profit Margin (now PIT: TTM) ---
-        if require_net_margin:
+        # Skip if metric not available (no quarterly data for this date)
+        if require_net_margin and 'profitMargins' in fund:
             net_margin = fund.get('profitMargins', 0) or 0
             if net_margin <= 0:
                 continue
 
         # --- Operating Margin (now PIT: TTM) ---
-        if require_op_margin:
+        if require_op_margin and 'operatingMargins' in fund:
             op_margin = fund.get('operatingMargins', 0) or 0
             if op_margin <= 0:
                 continue
 
         # --- EPS Growth (FIX Problem 2: single trailing YoY metric) ---
-        if min_eps_growth is not None:
+        if min_eps_growth is not None and 'earningsGrowth' in fund:
             eps_growth = fund.get('earningsGrowth', 0) or 0
             if eps_growth < min_eps_growth:
                 continue
 
         # --- Debt/Equity (now PIT: from quarterly balance sheet) ---
-        if max_de is not None:
+        if max_de is not None and 'debtToEquity' in fund:
             de_raw = fund.get('debtToEquity', 0) or 0
             de_ratio = de_raw / 100.0  # Convert to ratio (stored as percentage)
             if de_ratio > max_de:
@@ -330,6 +334,35 @@ def filtreaza_companii_hist(tickers, sector_map, sectors, fundamentals, price_df
                 current_price = col.iloc[-1]
                 if current_price < sma200:
                     continue
+
+        # --- A3: Momentum filter — exclude stocks with negative 1M AND 3M returns ---
+        if ticker in df_prices.columns:
+            col = df_prices[ticker].dropna()
+            if len(col) >= 63:  # ~3 months of trading days
+                price_now = col.iloc[-1]
+                price_1m = col.iloc[-21] if len(col) >= 21 else price_now
+                price_3m = col.iloc[-63]
+                ret_1m = (price_now / price_1m) - 1 if price_1m > 0 else 0
+                ret_3m = (price_now / price_3m) - 1 if price_3m > 0 else 0
+                # Only exclude if BOTH 1M and 3M are negative (falling knife)
+                if ret_1m < 0 and ret_3m < 0:
+                    continue
+
+        # --- A4: Volatility filter — exclude stocks with high annualized vol ---
+        # Detect aggressive profile from filter thresholds (no profile_type in scope)
+        is_aggressive = (filters_dict.get('min_market_cap', 0) < 1e9) if filters_dict else False
+        
+        # Ciclu 7: No volatility filter for aggressive profile (allow true growth)
+        if not is_aggressive:
+            vol_cap = 0.60
+            if ticker in df_prices.columns:
+                col = df_prices[ticker].dropna()
+                if len(col) >= 60:
+                    daily_returns = col.pct_change().dropna().tail(252)
+                    if len(daily_returns) >= 30:
+                        ann_vol = daily_returns.std() * (252 ** 0.5)
+                        if ann_vol > vol_cap:
+                            continue
 
         passing.append(ticker)
 
@@ -642,19 +675,25 @@ def calculeaza_portofoliu_hist(tickere, price_df, as_of_date, profile_type="bala
             return None
 
     elif profile_type == "aggressive":
-        # Max Sharpe cu fallback GMV
-        try:
-            mu = expected_returns.mean_historical_return(df_prices)
-            ef = EfficientFrontier(mu, S, weight_bounds=(0, 1))
-            ef.max_sharpe()
-            alocari_brute = ef.clean_weights()
-        except Exception:
-            try:
-                ef = EfficientFrontier(None, S, weight_bounds=(0, 1))
-                ef.min_volatility()
-                alocari_brute = ef.clean_weights()
-            except Exception:
-                return None
+        # Ciclu 7: Abandon Pypfopt for aggressive, use Top 10 Momentum Equal Weight
+        momentum_scores = {}
+        for ticker in available:
+            col = df_prices[ticker].dropna()
+            if len(col) >= 63:  # ~3 months
+                momentum_scores[ticker] = (col.iloc[-1] / col.iloc[-63]) - 1
+            else:
+                momentum_scores[ticker] = -999 # exclude if not enough data
+                
+        # Sort by momentum descending and take top 10
+        top_momentum = sorted([t for t in momentum_scores if momentum_scores[t] != -999], 
+                              key=lambda t: momentum_scores[t], 
+                              reverse=True)[:10]
+                              
+        if top_momentum:
+            weight = 1.0 / len(top_momentum)
+            alocari_brute = {ticker: weight for ticker in top_momentum}
+        else:
+            alocari_brute = None
 
     else:  # balanced — Max Sharpe cu fallback GMV
         try:
@@ -673,8 +712,50 @@ def calculeaza_portofoliu_hist(tickere, price_df, as_of_date, profile_type="bala
     if alocari_brute is None:
         return None
 
-    # Same post-processing: 2% min, 70% max
-    alocari_finale = aplica_reguli_redistribuire(alocari_brute, min_prag=0.02, max_prag=0.70)
+    if profile_type == "aggressive":
+        # Ciclu 7: Aggressive is already Top 10 Momentum Equal Weight. Bypass PyPortfolioOpt post-processing.
+        alocari_finale = alocari_brute
+    else:
+        # Post-processing: 2% min, variable max
+        if profile_type == "conservative":
+            max_cap = 0.12
+        else: # balanced
+            max_cap = 0.15
+        alocari_finale = aplica_reguli_redistribuire(alocari_brute, min_prag=0.02, max_prag=max_cap)
+
+        # --- Ciclu 7: Momentum-weighted tilt ---
+        # Boost allocations towards stocks with stronger 3M momentum
+        if alocari_finale:
+            # Profile-specific blend ratios (optimizer% / momentum%)
+            mom_blend = {'conservative': 0.20, 'balanced': 0.30}
+            mom_pct = mom_blend.get(profile_type, 0.30)
+            
+            momentum_scores = {}
+            for ticker in alocari_finale:
+                if ticker in price_df.columns:
+                    col = price_df[ticker].dropna()
+                    if len(col) >= 63:
+                        ret_3m = (col.iloc[-1] / col.iloc[-63]) - 1
+                        momentum_scores[ticker] = max(0, ret_3m)  # Only positive momentum
+                    else:
+                        momentum_scores[ticker] = 0
+                else:
+                    momentum_scores[ticker] = 0
+            
+            total_momentum = sum(momentum_scores.values())
+            if total_momentum > 0:
+                # Blend: (1-mom_pct) original weight + mom_pct momentum-proportional
+                for ticker in alocari_finale:
+                    mom_weight = momentum_scores[ticker] / total_momentum
+                    alocari_finale[ticker] = (1 - mom_pct) * alocari_finale[ticker] + mom_pct * mom_weight
+                
+                # Renormalize to sum to 1.0
+                total_w = sum(alocari_finale.values())
+                if total_w > 0:
+                    alocari_finale = {k: v/total_w for k, v in alocari_finale.items()}
+                
+                # Re-apply max cap after momentum tilt
+                alocari_finale = aplica_reguli_redistribuire(alocari_finale, min_prag=0.02, max_prag=max_cap)
 
     # Remove zero allocations
     alocari_finale = {k: v for k, v in alocari_finale.items() if v > 0}
@@ -704,6 +785,11 @@ def run_backtest_pipeline(
     """
     Run the full 6-step pipeline for a single rebalance date.
     Same step order and failure behavior as run_full_pipeline().
+    
+    Steps 3-5 (technical filters) use graceful fallback: if they eliminate
+    all stocks, the pipeline continues with the stocks from the prior step
+    instead of aborting entirely, to avoid empty results in challenging
+    market conditions.
     """
     # Pasul 1: Sector selection
     sectors = get_sectoare_profitabile_hist(sector_map, price_df, as_of_date)
@@ -722,28 +808,91 @@ def run_backtest_pipeline(
         print(f"  -> Pasul 2 a eșuat. Nicio companie nu a trecut filtrele.")
         return None
 
-    # Pasul 3: Relative strength vs SPY
+    # Pasul 3: Relative strength vs SPY (graceful fallback)
     puternice = compara_cu_piata_hist(companii, price_df, as_of_date)
 
     if not puternice:
-        print(f"  -> Pasul 3 a eșuat. Niciun ticker nu a supraperformat SPY.")
-        return None
+        print(f"  -> Pasul 3: Niciun ticker nu a supraperformat SPY. Se continuă cu {len(companii)} din Pasul 2.")
+        puternice = companii
 
-    # Pasul 4: OBV filter
+    # Pasul 4: OBV filter (graceful fallback)
     obv_ok = filtreaza_obv_hist(puternice, price_df, volume_df, as_of_date)
 
     if not obv_ok:
-        print(f"  -> Pasul 4 a eșuat. Niciun ticker nu a trecut OBV.")
-        return None
+        print(f"  -> Pasul 4: Niciun ticker nu a trecut OBV. Se continuă cu {len(puternice)} din Pasul 3.")
+        obv_ok = puternice
 
-    # Pasul 5: Industry strength
+    # Pasul 5: Industry strength (graceful fallback)
     finale = filtreaza_puterea_industriei_hist(obv_ok, industry_map, price_df, as_of_date)
 
     if not finale:
-        print(f"  -> Pasul 5 a eșuat. Nicio industrie puternică.")
-        return None
+        print(f"  -> Pasul 5: Nicio industrie puternică. Se continuă cu {len(obv_ok)} din Pasul 4.")
+        finale = obv_ok
 
     # Pasul 6: Portfolio optimization
     alocari = calculeaza_portofoliu_hist(finale, price_df, as_of_date, profile_type)
+
+    # --- A1: Ensure minimum 8 stocks ---
+    # If optimization produced fewer than 8 stocks, re-run with all 'finale' tickers
+    # and force equal weights as a fallback
+    MIN_STOCKS = 8
+    if alocari and len(alocari) < MIN_STOCKS and len(finale) >= MIN_STOCKS:
+        print(f"  -> A1: Doar {len(alocari)} stocuri după optimizare. Se forțează {MIN_STOCKS}+ stocuri cu ponderare egală.")
+        # Use top MIN_STOCKS from finale (already ranked by the pipeline)
+        top_tickers = finale[:MIN_STOCKS]
+        equal_weight = 1.0 / len(top_tickers)
+        alocari = {t: equal_weight for t in top_tickers if t in price_df.columns}
+    elif alocari and len(alocari) < MIN_STOCKS:
+        # Not enough tickers even in finale — use what we have with equal weight
+        if len(finale) > len(alocari):
+            equal_weight = 1.0 / len(finale)
+            alocari = {t: equal_weight for t in finale if t in price_df.columns}
+
+    # --- B5: Sector exposure cap — max 30% per sector ---
+    if alocari and sector_map:
+        sector_totals = {}
+        for ticker, weight in alocari.items():
+            sec = sector_map.get(ticker, 'Unknown')
+            sector_totals[sec] = sector_totals.get(sec, 0) + weight
+
+        needs_rebalance = any(v > 0.30 for v in sector_totals.values())
+        if needs_rebalance:
+            # Iteratively cap sectors at 30% and redistribute excess
+            for _ in range(5):
+                excess = 0
+                for sec, total in sector_totals.items():
+                    if total > 0.30:
+                        scale = 0.30 / total
+                        for ticker in list(alocari.keys()):
+                            if sector_map.get(ticker, 'Unknown') == sec:
+                                old_w = alocari[ticker]
+                                alocari[ticker] = old_w * scale
+                                excess += old_w - alocari[ticker]
+
+                # Redistribute excess proportionally to uncapped sectors
+                if excess > 0.001:
+                    uncapped = [t for t, w in alocari.items()
+                                if sector_totals.get(sector_map.get(t, 'Unknown'), 0) <= 0.30]
+                    if uncapped:
+                        uncapped_total = sum(alocari[t] for t in uncapped)
+                        if uncapped_total > 0:
+                            for t in uncapped:
+                                alocari[t] += (alocari[t] / uncapped_total) * excess
+
+                # Recalculate sector totals
+                sector_totals = {}
+                for ticker, weight in alocari.items():
+                    sec = sector_map.get(ticker, 'Unknown')
+                    sector_totals[sec] = sector_totals.get(sec, 0) + weight
+
+                if all(v <= 0.301 for v in sector_totals.values()):
+                    break
+
+            print(f"  -> B5: Sector cap aplicat. Max sector: {max(sector_totals.values()):.1%}")
+
+    # --- B6: Fallback to SPY when pipeline fails ---
+    if not alocari:
+        print(f"  -> B6: Pipeline eșuat. Fallback la SPY.")
+        alocari = {'SPY': 1.0}
 
     return alocari

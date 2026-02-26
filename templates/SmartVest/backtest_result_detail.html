@@ -361,30 +361,25 @@
 {% if result.equity_curve.dates %}
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        const eqDates = {{ result.equity_curve.dates| safe
+        const eqDates = {{ equity_dates_json| safe
     }};
-    const eqValues = {{ result.equity_curve.values| safe }};
+    const eqValues = {{ equity_values_json| safe }};
 
-    // Equity curve chart
-    new Chart(document.getElementById('equityChart').getContext('2d'), {
-        type: 'line',
-        data: {
-            labels: eqDates,
-            datasets: [
-                {
-                    label: 'Portofoliu SmartVest',
-                    data: eqValues,
-                    borderColor: '#28a745',
-                    backgroundColor: 'rgba(40, 167, 69, 0.1)',
-                    fill: true,
-                    tension: 0.3,
-                    pointRadius: 0,
-                    borderWidth: 2.5,
-                },
-                {% if result.benchmark_curve.dates %}
-                {
-            label: 'S&P 500 (SPY)',
-            data: {{ result.benchmark_curve.values | safe }},
+    const datasets = [{
+        label: 'Portofoliu SmartVest',
+        data: eqValues,
+        borderColor: '#28a745',
+        backgroundColor: 'rgba(40, 167, 69, 0.1)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 0,
+        borderWidth: 2.5,
+    }];
+
+    {% if has_benchmark %}
+    datasets.push({
+        label: 'S&P 500 (SPY)',
+        data: {{ benchmark_values_json| safe }},
         borderColor: '#ffc107',
         backgroundColor: 'rgba(255, 193, 7, 0.05)',
         fill: true,
@@ -392,45 +387,48 @@
         pointRadius: 0,
         borderWidth: 2,
         borderDash: [5, 3],
-                }
-        {% endif %}
-            ]
-        },
+        });
+    {% endif %}
+
+    // Equity curve chart
+    new Chart(document.getElementById('equityChart').getContext('2d'), {
+        type: 'line',
+        data: { labels: eqDates, datasets: datasets },
         options: {
-        responsive: true,
-        maintainAspectRatio: true,
-        aspectRatio: 2.5,
-        interaction: { intersect: false, mode: 'index' },
-        plugins: {
-            legend: { labels: { color: '#8da3b6', font: { size: 12 } } },
-            tooltip: {
-                backgroundColor: '#1a1f2e',
-                titleColor: '#fff',
-                bodyColor: '#8da3b6',
-                borderColor: 'rgba(255,255,255,0.1)',
-                borderWidth: 1,
-                callbacks: {
-                    label: function (ctx) {
-                        return ctx.dataset.label + ': $' + ctx.parsed.y.toLocaleString();
+            responsive: true,
+            maintainAspectRatio: true,
+            aspectRatio: 2.5,
+            interaction: { intersect: false, mode: 'index' },
+            plugins: {
+                legend: { labels: { color: '#8da3b6', font: { size: 12 } } },
+                tooltip: {
+                    backgroundColor: '#1a1f2e',
+                    titleColor: '#fff',
+                    bodyColor: '#8da3b6',
+                    borderColor: 'rgba(255,255,255,0.1)',
+                    borderWidth: 1,
+                    callbacks: {
+                        label: function (ctx) {
+                            return ctx.dataset.label + ': $' + ctx.parsed.y.toLocaleString();
+                        }
                     }
                 }
-            }
-        },
-        scales: {
-            x: {
-                ticks: { color: '#6c7a89', maxTicksLimit: 12, font: { size: 10 } },
-                grid: { color: 'rgba(255,255,255,0.03)' }
             },
-            y: {
-                ticks: {
-                    color: '#6c7a89',
-                    callback: function (v) { return '$' + v.toLocaleString(); },
-                    font: { size: 10 }
+            scales: {
+                x: {
+                    ticks: { color: '#6c7a89', maxTicksLimit: 12, font: { size: 10 } },
+                    grid: { color: 'rgba(255,255,255,0.03)' }
                 },
-                grid: { color: 'rgba(255,255,255,0.05)' }
+                y: {
+                    ticks: {
+                        color: '#6c7a89',
+                        callback: function (v) { return '$' + v.toLocaleString(); },
+                        font: { size: 10 }
+                    },
+                    grid: { color: 'rgba(255,255,255,0.05)' }
+                }
             }
         }
-    }
     });
 
     // Drawdown chart

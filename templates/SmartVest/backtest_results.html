@@ -243,7 +243,7 @@
 
         <!-- Summary Stats -->
         <div class="row g-3 mb-4">
-            <div class="col-6 col-md-2">
+            <div class="col-6 col-md">
                 <div class="stats-card">
                     <div class="stats-value info">
                         {{ stats.count|default:"0" }}
@@ -251,7 +251,7 @@
                     <div class="stats-label">Teste Complete</div>
                 </div>
             </div>
-            <div class="col-6 col-md-2">
+            <div class="col-6 col-md">
                 <div class="stats-card">
                     <div class="stats-value
  {% if stats.avg_return >= 0 %}positive{% else %}negative{% endif %}">
@@ -260,7 +260,7 @@
                     <div class="stats-label">Retur Mediu</div>
                 </div>
             </div>
-            <div class="col-6 col-md-2">
+            <div class="col-6 col-md">
                 <div class="stats-card">
                     <div class="stats-value neutral">
                         {% if stats.avg_sharpe != None %}{{ stats.avg_sharpe|floatformat:2 }}{% else %}—{% endif %}
@@ -268,7 +268,7 @@
                     <div class="stats-label">Sharpe Mediu</div>
                 </div>
             </div>
-            <div class="col-6 col-md-2">
+            <div class="col-6 col-md">
                 <div class="stats-card">
                     <div class="stats-value negative">
                         {% if stats.avg_drawdown != None %}{{ stats.avg_drawdown|floatformat:1 }}%{% else %}—{% endif %}
@@ -276,7 +276,7 @@
                     <div class="stats-label">Drawdown Mediu</div>
                 </div>
             </div>
-            <div class="col-6 col-md-2">
+            <div class="col-6 col-md">
                 <div class="stats-card">
                     <div class="stats-value
  {% if win_rate >= 50 %}positive{% else %}negative{% endif %}">
@@ -285,7 +285,16 @@
                     <div class="stats-label">Win Rate</div>
                 </div>
             </div>
-            <div class="col-6 col-md-2">
+            <div class="col-6 col-md">
+                <div class="stats-card">
+                    <div class="stats-value
+ {% if beat_spy_rate >= 50 %}positive{% elif beat_spy_rate >= 30 %}neutral{% else %}negative{% endif %}">
+                        {{ beat_spy_rate }}%
+                    </div>
+                    <div class="stats-label">Beat SPY</div>
+                </div>
+            </div>
+            <div class="col-6 col-md">
                 <div class="stats-card">
                     <div class="stats-value info">
                         {% if stats.best_return != None %}+{{ stats.best_return|floatformat:0 }}%{% else %}—{% endif %}

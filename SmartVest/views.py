@@ -1006,6 +1006,10 @@ def backtest_results(request):
     wins = runs.filter(total_return__gt=0).count()
     win_rate = (wins / total_done * 100) if total_done > 0 else 0
 
+    # Beat SPY rate (outperformance > 0)
+    beat_spy = runs.filter(outperformance__gt=0).count()
+    beat_spy_rate = (beat_spy / total_done * 100) if total_done > 0 else 0
+
     # Per-profile breakdown
     profile_stats = {}
     for p in ['conservative', 'balanced', 'aggressive']:
@@ -1042,6 +1046,7 @@ def backtest_results(request):
         'runs': runs,
         'stats': stats,
         'win_rate': round(win_rate, 1),
+        'beat_spy_rate': round(beat_spy_rate, 1),
         'profile_stats': profile_stats,
         'current_profile': profile_filter,
         'current_sort': sort_by,
@@ -1055,7 +1060,12 @@ def backtest_results(request):
 @user_passes_test(lambda u: u.is_superuser)
 def backtest_result_detail(request, pk):
     """Detail view for a single backtest run — shows full charts and data."""
+    import json
     run = get_object_or_404(BacktestRun, pk=pk)
+
+    equity_curve = run.equity_curve_json or {}
+    benchmark_curve = run.benchmark_curve_json or {}
+    snapshots = run.snapshots_json or []
 
     # Build a result dict matching the format used by backtest.html
     result = {
@@ -1078,14 +1088,19 @@ def backtest_result_detail(request, pk):
             'final_value': run.final_value,
             'n_trading_days': run.n_trading_days,
         },
-        'equity_curve': run.equity_curve_json,
-        'benchmark_curve': run.benchmark_curve_json,
-        'snapshots': run.snapshots_json,
+        'equity_curve': equity_curve,
+        'benchmark_curve': benchmark_curve,
+        'snapshots': snapshots,
     }
 
     context = {
         'run': run,
         'result': result,
+        # Pre-serialized JSON for safe JavaScript embedding
+        'equity_dates_json': json.dumps(equity_curve.get('dates', [])),
+        'equity_values_json': json.dumps(equity_curve.get('values', [])),
+        'benchmark_values_json': json.dumps(benchmark_curve.get('values', [])),
+        'has_benchmark': bool(benchmark_curve.get('dates')),
     }
     return render(request, 'SmartVest/backtest_result_detail.html', context)
 

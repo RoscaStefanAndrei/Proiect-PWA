@@ -1,0 +1,16 @@
+Key_Metric,Value
+Total Runs Completed,158
+Total Runs Failed,2
+Win Rate (Return > 0%),50.6% (80/158)
+Beat S&P 500,29.1% (46/158)
+Empty Runs (0 stocks),7/158 (4.4%)
+Cash-Only Snapshots,108/699 (15.5%)
+Active Snapshots,591/699 (84.5%)
+Total Unique Stocks Selected,1060
+Stocks Selected Only Once,329
+Avg Execution Time (sec),37
+Analysis Date,2026-02-24
+Algorithm Version,Ciclu 1 - Initial (pre-improvements)
+Date Range Covered,2018-2025
+Rebalance Frequency,Quarterly (3 months)
+Initial Capital,"$10,000"

@@ -1,0 +1,13 @@
+Key_Metric,Value
+Total Runs Completed,100
+Total Runs Failed,0
+Win Rate (Return > 0%),52/100 (52.0%)
+Beat S&P 500,20/100 (20.0%)
+Avg Return (%),2.40
+Median Return (%),0.32
+Cash-Only Snapshots,17/451 (3.8%)
+Total Unique Stocks,853
+Analysis Date,2026-02-24
+Algorithm Version,Ciclu 2 - Improved (A1-A4 + B1-B6)
+Date Range Covered,2018-2025
+Initial Capital,"$10,000"

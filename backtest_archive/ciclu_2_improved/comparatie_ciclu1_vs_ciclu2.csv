@@ -1,0 +1,14 @@
+Metric,Ciclu_1,Ciclu_2,Delta,Improvement
+Total Runs,158,100,-58,BETTER
+Win Rate,50.6,52.0,1.4,BETTER
+Beat SPY,29.1,20.0,-9.1,WORSE
+Avg Return,11.98,2.4,-9.58,WORSE
+Med Return,0.09,0.32,0.23,BETTER
+Avg DD,-27.38,-14.83,12.55,WORSE
+Avg Vol,32.42,15.15,-17.27,BETTER
+Avg Alpha,-2.14,-9.17,-7.03,WORSE
+Cash Drag,15.5,3.77,-11.73,BETTER
+Max Weight,40.28,2269.79,2229.51,WORSE
+Top3 Conc,70.47,4648.66,4578.19,WORSE
+Avg Stocks,7.6,8.39,0.79,BETTER
+DD <-30%,35,2.0,-33.0,BETTER

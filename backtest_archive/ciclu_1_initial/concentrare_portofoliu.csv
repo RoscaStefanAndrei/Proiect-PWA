@@ -1,0 +1,4 @@
+Metric,Average,Median,Min,Max,StdDev,N_Snapshots
+Max Single Weight (%),40.28,33.1,7.5,100.0,24.6,591
+Top-3 Concentration (%),70.47,70.7,21.2,100.1,24.22,591
+Stocks per Snapshot,7.9,7.0,1.0,22.0,5.2,591
