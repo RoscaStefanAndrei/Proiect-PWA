@@ -14,6 +14,7 @@ urlpatterns = [
     path('portfolios/', views.PortfolioListView.as_view(), name='portfolio-list'),
     path('analysis/save/', views.save_portfolio, name='save-portfolio'),
     path('portfolios/<int:pk>/delete/', views.PortfolioDeleteView.as_view(), name='portfolio-delete'),
+    path('portfolios/<int:pk>/rename/', views.rename_portfolio, name='portfolio-rename'),
     path('portfolios/<int:pk>/', views.PortfolioDetailView.as_view(), name='portfolio-detail'),
     path('analysis/performance/', views.track_performance, name='track-performance'),
     path('news/', views.market_news, name='market-news'),

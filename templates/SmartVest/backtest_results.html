@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 
-{% block title %}Rezultate Backtesting{% endblock %}
-{% block header_title %}📊 Rezultate Backtesting{% endblock %}
+{% block title %}Backtest Results{% endblock %}
+{% block header_title %}📊 Backtest Results{% endblock %}
 
 {% block content %}
 <style>
@@ -11,6 +11,76 @@
         border-radius: 14px;
         padding: 20px;
         text-align: center;
+        position: relative;
+    }
+
+    /* Tooltip info icon */
+    .info-tooltip {
+        position: absolute;
+        top: 8px;
+        left: 10px;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.08);
+        color: #6c7a89;
+        font-size: 0.65rem;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: help;
+        transition: all 0.2s;
+        z-index: 2;
+        font-style: italic;
+        font-family: Georgia, serif;
+    }
+
+    .info-tooltip:hover {
+        background: rgba(40, 167, 69, 0.25);
+        color: #28a745;
+        transform: scale(1.15);
+    }
+
+    .info-tooltip .tooltip-text {
+        visibility: hidden;
+        opacity: 0;
+        position: absolute;
+        top: calc(100% + 8px);
+        left: 50%;
+        transform: translateX(-50%);
+        background: #1e2433;
+        color: #c8d6e0;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 10px;
+        padding: 10px 14px;
+        font-size: 0.72rem;
+        font-weight: 400;
+        font-style: normal;
+        font-family: inherit;
+        line-height: 1.45;
+        width: 220px;
+        text-align: left;
+        white-space: normal;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+        transition: opacity 0.25s, visibility 0.25s;
+        z-index: 100;
+        pointer-events: none;
+    }
+
+    .info-tooltip .tooltip-text::before {
+        content: '';
+        position: absolute;
+        bottom: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        border: 6px solid transparent;
+        border-bottom-color: rgba(255, 255, 255, 0.12);
+    }
+
+    .info-tooltip:hover .tooltip-text {
+        visibility: visible;
+        opacity: 1;
     }
 
     .stats-value {
@@ -230,7 +300,7 @@
                 <div class="flex-grow-1">
                     <div class="d-flex justify-content-between align-items-center">
                         <span class="text-white fw-bold" style="font-size:0.9rem">
-                            Algoritm în desfășurare — <span id="runnerName">...</span>
+                            Algorithm running — <span id="runnerName">...</span>
                         </span>
                         <span class="text-muted" style="font-size:0.75rem" id="runnerInfo"></span>
                     </div>
@@ -245,39 +315,54 @@
         <div class="row g-3 mb-4">
             <div class="col-6 col-md">
                 <div class="stats-card">
+                    <span class="info-tooltip">i
+                        <span class="tooltip-text">Total number of portfolio simulations successfully completed in the backtesting.</span>
+                    </span>
                     <div class="stats-value info">
                         {{ stats.count|default:"0" }}
                     </div>
-                    <div class="stats-label">Teste Complete</div>
+                    <div class="stats-label">Tests Completed</div>
                 </div>
             </div>
             <div class="col-6 col-md">
                 <div class="stats-card">
+                    <span class="info-tooltip">i
+                        <span class="tooltip-text">The average total return across all tested portfolios. A positive return indicates the strategy's average profitability over the tested period.</span>
+                    </span>
                     <div class="stats-value
  {% if stats.avg_return >= 0 %}positive{% else %}negative{% endif %}">
                         {% if stats.avg_return != None %}{{ stats.avg_return|floatformat:1 }}%{% else %}—{% endif %}
                     </div>
-                    <div class="stats-label">Retur Mediu</div>
+                    <div class="stats-label">Avg Return</div>
                 </div>
             </div>
             <div class="col-6 col-md">
                 <div class="stats-card">
+                    <span class="info-tooltip">i
+                        <span class="tooltip-text">Sharpe Ratio measures risk-adjusted return. Values > 1 are good, > 2 are very good. The higher it is, the better the return compensates for the risk taken.</span>
+                    </span>
                     <div class="stats-value neutral">
                         {% if stats.avg_sharpe != None %}{{ stats.avg_sharpe|floatformat:2 }}{% else %}—{% endif %}
                     </div>
-                    <div class="stats-label">Sharpe Mediu</div>
+                    <div class="stats-label">Avg Sharpe</div>
                 </div>
             </div>
             <div class="col-6 col-md">
                 <div class="stats-card">
+                    <span class="info-tooltip">i
+                        <span class="tooltip-text">The average maximum loss from peak to trough across simulations. Represents the average worst-case scenario — the closer to 0%, the lower the risk of loss.</span>
+                    </span>
                     <div class="stats-value negative">
                         {% if stats.avg_drawdown != None %}{{ stats.avg_drawdown|floatformat:1 }}%{% else %}—{% endif %}
                     </div>
-                    <div class="stats-label">Drawdown Mediu</div>
+                    <div class="stats-label">Avg Drawdown</div>
                 </div>
             </div>
             <div class="col-6 col-md">
                 <div class="stats-card">
+                    <span class="info-tooltip">i
+                        <span class="tooltip-text">Percentage of simulations that generated a positive return (profit). A rate > 50% indicates a consistent strategy.</span>
+                    </span>
                     <div class="stats-value
  {% if win_rate >= 50 %}positive{% else %}negative{% endif %}">
                         {{ win_rate }}%
@@ -287,6 +372,9 @@
             </div>
             <div class="col-6 col-md">
                 <div class="stats-card">
+                    <span class="info-tooltip">i
+                        <span class="tooltip-text">Percentage of simulations where the portfolio outperformed S&P 500 (market benchmark). A value > 50% shows the strategy regularly beats the market.</span>
+                    </span>
                     <div class="stats-value
  {% if beat_spy_rate >= 50 %}positive{% elif beat_spy_rate >= 30 %}neutral{% else %}negative{% endif %}">
                         {{ beat_spy_rate }}%
@@ -296,10 +384,13 @@
             </div>
             <div class="col-6 col-md">
                 <div class="stats-card">
+                    <span class="info-tooltip">i
+                        <span class="tooltip-text">The highest return achieved by a single portfolio among all simulations. Shows the maximum potential of the strategy under optimal conditions.</span>
+                    </span>
                     <div class="stats-value info">
                         {% if stats.best_return != None %}+{{ stats.best_return|floatformat:0 }}%{% else %}—{% endif %}
                     </div>
-                    <div class="stats-label">Cel Mai Bun</div>
+                    <div class="stats-label">Best</div>
                 </div>
             </div>
         </div>
@@ -315,12 +406,12 @@
                             {{ profile }}
                         </span>
                         <span class="text-muted" style="font-size:0.75rem">
-                            {{ pstats.count }} teste
+                            {{ pstats.count }} tests
                         </span>
                     </div>
                     <div class="d-flex gap-2 flex-wrap">
                         <div class="metric-pill">
-                            <span class="metric-label">Retur</span>
+                            <span class="metric-label">Return</span>
                             <span class="metric-value
  {% if pstats.avg_return >= 0 %}text-success{% else %}text-danger{% endif %}">
                                 {{ pstats.avg_return|floatformat:1 }}%
@@ -356,7 +447,7 @@
         <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
             <div class="d-flex gap-2">
                 <a href="?sort={{ current_sort }}" class="filter-btn {% if not current_profile %}active{% endif %}">
-                    Toate
+                    All
                 </a>
                 <a href="?profile=conservative&sort={{ current_sort }}"
                     class="filter-btn {% if current_profile == 'conservative' %}active{% endif %}">
@@ -374,15 +465,15 @@
             <div class="d-flex gap-2 align-items-center">
                 {% if total_running > 0 %}
                 <span class="running-badge">
-                    ⚡ {{ total_running }} în desfășurare
+                    ⚡ {{ total_running }} running
                 </span>
                 {% endif %}
                 <span class="text-muted" style="font-size:0.75rem">
-                    Sortează:
+                    Sort:
                 </span>
                 <a href="?profile={{ current_profile }}&sort=-total_return"
                     class="sort-link {% if current_sort == '-total_return' %}active{% endif %}">
-                    Retur ↓
+                    Return ↓
                 </a>
                 <a href="?profile={{ current_profile }}&sort=-sharpe_ratio"
                     class="sort-link {% if current_sort == '-sharpe_ratio' %}active{% endif %}">
@@ -394,7 +485,7 @@
                 </a>
                 <a href="?profile={{ current_profile }}&sort=start_date"
                     class="sort-link {% if current_sort == 'start_date' %}active{% endif %}">
-                    Dată ↑
+                    Date ↑
                 </a>
             </div>
         </div>
@@ -417,7 +508,7 @@
             </div>
             <div class="d-flex gap-2 flex-wrap">
                 <div class="metric-pill">
-                    <span class="metric-label">Retur</span>
+                    <span class="metric-label">Return</span>
                     <span class="metric-value
  {% if run.total_return >= 0 %}text-success{% else %}text-danger{% endif %}">
                         {% if run.total_return != None %}{{ run.total_return|floatformat:1 }}%{% else %}—{% endif %}
@@ -457,13 +548,13 @@
                     </span>
                 </div>
                 <div class="metric-pill">
-                    <span class="metric-label">Val. Finală</span>
+                    <span class="metric-label">Final Val.</span>
                     <span class="metric-value text-info">
                         {% if run.final_value != None %}${{ run.final_value|floatformat:0 }}{% else %}—{% endif %}
                     </span>
                 </div>
                 <div class="metric-pill">
-                    <span class="metric-label">Acțiuni</span>
+                    <span class="metric-label">Stocks</span>
                     <span class="metric-value text-white">
                         {% if run.n_stocks_avg != None %}{{ run.n_stocks_avg|floatformat:0 }}{% else %}—{% endif %}
                     </span>
@@ -474,10 +565,10 @@
         <div class="text-center py-5">
             <i class="fas fa-flask fa-3x text-muted mb-3"></i>
             <p class="text-muted">
-                Niciun backtest finalizat încă.
+                No backtests completed yet.
             </p>
             <p class="text-muted" style="font-size:0.85rem">
-                Rulează <code>python manage.py run_backtests</code> pentru a porni testarea automată.
+                Run <code>python manage.py run_backtests</code> to start automated testing.
             </p>
         </div>
         {% endfor %}

@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 
-{% block title %}Stiri{% endblock %}
-{% block header_title %}Știri Financiare{% endblock %}
+{% block title %}News{% endblock %}
+{% block header_title %}Financial News{% endblock %}
 
 {% block content %}
 <div class="row">
@@ -24,8 +24,8 @@
         </div>
         {% else %}
         <div class="alert alert-warning bg-opacity-10 border-warning text-warning">
-            <h4 class="alert-heading h5"><i class="fas fa-exclamation-triangle me-2"></i>Nu s-au găsit știri</h4>
-            <p class="mb-0">Nu am putut prelua ultimele știri. Verifică conexiunea la internet sau încearcă mai târziu.
+            <h4 class="alert-heading h5"><i class="fas fa-exclamation-triangle me-2"></i>No News Found</h4>
+            <p class="mb-0">Could not fetch the latest news. Check your internet connection or try again later.
             </p>
         </div>
         {% endif %}

@@ -114,14 +114,14 @@ class Command(BaseCommand):
             "\n🤖 SmartVest Automated Backtest Runner" +
             "\n" + "=" * 60
         ))
-        self.stdout.write(f"  Perioade: {EARLIEST_START} → {LATEST_END}")
-        self.stdout.write(f"  Durată max: {MAX_PERIOD_DAYS} zile (1 an)")
+        self.stdout.write(f"  Periods: {EARLIEST_START} → {LATEST_END}")
+        self.stdout.write(f"  Max duration: {MAX_PERIOD_DAYS} days (1 year)")
         self.stdout.write(f"  Capital: ${capital:,.0f}")
-        self.stdout.write(f"  Profil: {profile_filter or 'TOATE'}")
-        self.stdout.write(f"  Max rulări: {max_runs or '∞'}")
+        self.stdout.write(f"  Profile: {profile_filter or 'ALL'}")
+        self.stdout.write(f"  Max runs: {max_runs or '∞'}")
 
         existing_count = BacktestRun.objects.filter(status='done').count()
-        self.stdout.write(f"  Rulări existente în DB: {existing_count}")
+        self.stdout.write(f"  Existing runs in DB: {existing_count}")
         self.stdout.write("=" * 60 + "\n")
 
         run_count = 0
@@ -130,7 +130,7 @@ class Command(BaseCommand):
             while True:
                 if max_runs > 0 and run_count >= max_runs:
                     self.stdout.write(self.style.SUCCESS(
-                        f"\n✅ Am terminat {max_runs} rulări. Oprire."
+                        f"\n✅ Completed {max_runs} runs. Stopping."
                     ))
                     break
 
@@ -145,7 +145,7 @@ class Command(BaseCommand):
 
                 if retries >= 20:
                     self.stdout.write(self.style.WARNING(
-                        "⚠️  Nu am găsit scenarii noi. Încetinire..."
+                        "⚠️  No new scenarios found. Slowing down..."
                     ))
                     time.sleep(5)
                     continue
@@ -155,9 +155,9 @@ class Command(BaseCommand):
 
                 self.stdout.write(self.style.HTTP_INFO(
                     f"\n{'─' * 60}"
-                    f"\n🔬 Rulare #{run_count}: {name}"
+                    f"\n🔬 Run #{run_count}: {name}"
                     f"\n   {start_date} → {end_date} ({(end_date - start_date).days}d)"
-                    f"\n   Profil: {profile_type.upper()}"
+                    f"\n   Profile: {profile_type.upper()}"
                     f"\n{'─' * 60}"
                 ))
 
@@ -197,7 +197,7 @@ class Command(BaseCommand):
                         run_record.save()
 
                         self.stdout.write(self.style.ERROR(
-                            f"   ❌ Eșuat: {metrics['error']}"
+                            f"   ❌ Failed: {metrics['error']}"
                         ))
                         continue
 
@@ -248,12 +248,12 @@ class Command(BaseCommand):
                         f"   ✅ {name} — Return: {ret:+.1f}%, "
                         f"Sharpe: {sharpe:.2f}, MaxDD: {dd:.1f}%, "
                         f"Stocks: {avg_stocks:.0f}, "
-                        f"Timp: {duration:.0f}s"
+                        f"Time: {duration:.0f}s"
                     ))
 
                     # Running totals
                     done_count = BacktestRun.objects.filter(status='done').count()
-                    self.stdout.write(f"   📊 Total în DB: {done_count} rulări finalizate")
+                    self.stdout.write(f"   📊 Total in DB: {done_count} runs completed")
 
                 except Exception as e:
                     duration = time.time() - t_start
@@ -263,7 +263,7 @@ class Command(BaseCommand):
                     run_record.save()
 
                     self.stdout.write(self.style.ERROR(
-                        f"   ❌ Eroare: {e}"
+                        f"   ❌ Error: {e}"
                     ))
                     traceback.print_exc()
 
@@ -272,7 +272,7 @@ class Command(BaseCommand):
 
         except KeyboardInterrupt:
             self.stdout.write(self.style.SUCCESS(
-                f"\n\n🛑 Oprit de utilizator după {run_count} rulări."
+                f"\n\n🛑 Stopped by user after {run_count} runs."
             ))
             # Mark any 'running' records as failed
             BacktestRun.objects.filter(status='running').update(
@@ -285,8 +285,8 @@ class Command(BaseCommand):
         failed = BacktestRun.objects.filter(status='failed')
         self.stdout.write(self.style.SUCCESS(
             f"\n{'=' * 60}"
-            f"\n📊 SUMAR FINAL"
-            f"\n   Total finalizate: {done.count()}"
-            f"\n   Total eșuate: {failed.count()}"
+            f"\n📊 FINAL SUMMARY"
+            f"\n   Total completed: {done.count()}"
+            f"\n   Total failed: {failed.count()}"
             f"\n{'=' * 60}"
         ))

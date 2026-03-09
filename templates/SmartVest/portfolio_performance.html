@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 
-{% block title %}Performanța Portofoliilor{% endblock %}
-{% block header_title %}Performanță{% endblock %}
+{% block title %}Portfolio Performance{% endblock %}
+{% block header_title %}Performance{% endblock %}
 
 {% block content %}
 <div class="row">
@@ -21,7 +21,7 @@
                     </div>
                     <div class="d-flex gap-3 flex-wrap">
                         <div class="metric-pill">
-                            <span class="metric-label">Valoare</span>
+                            <span class="metric-label">Value</span>
                             <span class="metric-value text-white">
                                 ${{ data.current_value|floatformat:2 }}
                             </span>
@@ -47,7 +47,7 @@
                             </span>
                         </div>
                         <div class="metric-pill ms-auto">
-                            <span class="metric-label">Investiție</span>
+                            <span class="metric-label">Investment</span>
                             <span class="metric-value text-muted">
                                 ${{ data.initial_value|floatformat:2 }}
                             </span>
@@ -60,11 +60,11 @@
         {% else %}
         <div class="text-center py-5 bg-dark-card rounded-3">
             <i class="fas fa-chart-line fa-3x text-muted mb-3"></i>
-            <h5 class="text-white fw-bold">Nu sunt portofolii</h5>
+            <h5 class="text-white fw-bold">No Portfolios</h5>
             <p class="text-muted mb-4">
-                Salvează un portofoliu pentru a-i urmări performanța.
+                Save a portfolio to track its performance.
             </p>
-            <a href="{% url 'select-portfolio-type' %}" class="btn btn-primary rounded-pill px-4">Analiză Nouă</a>
+            <a href="{% url 'select-portfolio-type' %}" class="btn btn-primary rounded-pill px-4">New Analysis</a>
         </div>
         {% endif %}
     </div>

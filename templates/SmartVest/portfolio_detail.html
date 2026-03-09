@@ -4,13 +4,118 @@
 {% block header_title %}{{ object.name }}{% endblock %}
 
 {% block content %}
+<style>
+    .portfolio-name-display {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+    }
+    .portfolio-name-display h4 {
+        margin: 0;
+        font-weight: 700;
+        color: #fff;
+    }
+    .btn-edit-name {
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.15);
+        color: #adb5bd;
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-size: 0.8rem;
+        padding: 0;
+    }
+    .btn-edit-name:hover {
+        background: rgba(13, 110, 253, 0.2);
+        border-color: rgba(13, 110, 253, 0.4);
+        color: #6ea8fe;
+    }
+    .rename-form {
+        display: none;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+    }
+    .rename-form.active {
+        display: flex;
+    }
+    .rename-form input {
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.2);
+        color: #fff;
+        border-radius: 8px;
+        padding: 0.4rem 0.75rem;
+        font-size: 1.1rem;
+        font-weight: 700;
+        outline: none;
+        transition: border-color 0.2s;
+        max-width: 350px;
+    }
+    .rename-form input:focus {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.15);
+    }
+    .rename-form .btn-save-name {
+        background: #198754;
+        border: none;
+        color: #fff;
+        border-radius: 8px;
+        padding: 0.4rem 0.75rem;
+        font-size: 0.8rem;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    .rename-form .btn-save-name:hover {
+        background: #157347;
+    }
+    .rename-form .btn-cancel-name {
+        background: transparent;
+        border: 1px solid rgba(255,255,255,0.15);
+        color: #adb5bd;
+        border-radius: 8px;
+        padding: 0.4rem 0.75rem;
+        font-size: 0.8rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .rename-form .btn-cancel-name:hover {
+        background: rgba(255,255,255,0.05);
+        color: #fff;
+    }
+</style>
+
+<!-- Portfolio Name with Edit -->
+<div class="portfolio-name-display" id="nameDisplay">
+    <h4 id="portfolioName">{{ object.name }}</h4>
+    <button class="btn-edit-name" onclick="startRename()" title="Rename Portfolio">
+        <i class="fas fa-pencil-alt"></i>
+    </button>
+</div>
+
+<div class="rename-form" id="renameForm">
+    <input type="text" id="renameInput" value="{{ object.name }}" maxlength="100"
+        onkeydown="if(event.key==='Enter')saveRename(); if(event.key==='Escape')cancelRename();">
+    <button class="btn-save-name" onclick="saveRename()">
+        <i class="fas fa-check me-1"></i>Save
+    </button>
+    <button class="btn-cancel-name" onclick="cancelRename()">
+        <i class="fas fa-times me-1"></i>Cancel
+    </button>
+</div>
+
 {% if perf %}
 <!-- Summary Bar -->
 <div class="card bg-dark-card border border-secondary mb-3">
     <div class="card-body py-2 px-3">
         <div class="d-flex gap-4 flex-wrap align-items-center">
             <div class="metric-pill">
-                <span class="metric-label">Valoare Piață</span>
+                <span class="metric-label">Market Value</span>
                 <span class="metric-value text-white fw-bold" style="font-size:1.1rem">
                     ${{ perf.current_value|floatformat:2 }}
                 </span>
@@ -36,7 +141,7 @@
                 </span>
             </div>
             <div class="metric-pill ms-auto">
-                <span class="metric-label">Investiție Inițială</span>
+                <span class="metric-label">Initial Investment</span>
                 <span class="metric-value text-muted">
                     ${{ perf.initial_value|floatformat:2 }}
                 </span>
@@ -53,11 +158,14 @@
                 <thead>
                     <tr class="text-muted border-bottom border-secondary">
                         <th>Ticker</th>
-                        <th class="text-end">Pondere</th>
-                        <th class="text-end">Cantitate</th>
-                        <th class="text-end">Preț Mediu</th>
-                        <th class="text-end">Preț Actual</th>
-                        <th class="text-end">Valoare Piață</th>
+                        <th>Sector</th>
+                        <th>Industry</th>
+                        <th class="text-center">Type</th>
+                        <th class="text-end">Weight</th>
+                        <th class="text-end">Quantity</th>
+                        <th class="text-end">Buy Price</th>
+                        <th class="text-end">Current Price</th>
+                        <th class="text-end">Market Value</th>
                         <th class="text-end">Daily P/L</th>
                         <th class="text-end">Net P/L %</th>
                         <th class="text-end">Net P/L</th>
@@ -68,6 +176,25 @@
                     <tr class="border-bottom border-secondary">
                         <td class="fw-bold text-white">
                             {{ h.ticker }}
+                        </td>
+                        <td class="text-muted small">
+                            {{ h.sector }}
+                        </td>
+                        <td class="text-muted small">
+                            {{ h.industry }}
+                        </td>
+                        <td class="text-center">
+                            {% if h.asset_type == 'ETF' %}
+                                <span class="badge bg-info text-dark">ETF</span>
+                            {% elif h.asset_type == 'EQUITY' %}
+                                <span class="badge bg-success">Stock</span>
+                            {% elif h.asset_type == 'ADR' %}
+                                <span class="badge bg-warning text-dark">ADR</span>
+                            {% elif h.asset_type == 'MUTUALFUND' %}
+                                <span class="badge bg-secondary">Fund</span>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ h.asset_type }}</span>
+                            {% endif %}
                         </td>
                         <td class="text-end text-muted">
                             {{ h.weight|floatformat:2 }}%
@@ -105,14 +232,14 @@
 </div>
 {% else %}
 <div class="alert alert-info">
-    <p>Nu s-au putut încărca datele de performanță.</p>
+    <p>Could not load performance data.</p>
 </div>
 {% endif %}
 
 {% if object.description %}
 <div class="card bg-dark-card border border-secondary mb-3">
     <div class="card-body py-2 px-3">
-        <small class="text-muted d-block mb-1">Descriere</small>
+        <small class="text-muted d-block mb-1">Description</small>
         <p class="text-light mb-0 small">
             {{ object.description|linebreaks }}
         </p>
@@ -122,10 +249,52 @@
 
 <div class="d-flex gap-2 mb-4">
     <a href="{% url 'portfolio-list' %}" class="btn btn-sm btn-outline-light rounded-pill px-3">
-        <i class="fas fa-arrow-left me-1"></i>Înapoi
+        <i class="fas fa-arrow-left me-1"></i>Back
     </a>
     <a href="{% url 'portfolio-delete' object.id %}" class="btn btn-sm btn-outline-danger rounded-pill px-3">
-        <i class="fas fa-trash-alt me-1"></i>Șterge
+        <i class="fas fa-trash-alt me-1"></i>Delete
     </a>
 </div>
+
+<script>
+    function startRename() {
+        document.getElementById('nameDisplay').style.display = 'none';
+        const form = document.getElementById('renameForm');
+        form.classList.add('active');
+        const input = document.getElementById('renameInput');
+        input.focus();
+        input.select();
+    }
+
+    function cancelRename() {
+        document.getElementById('renameForm').classList.remove('active');
+        document.getElementById('nameDisplay').style.display = 'flex';
+        document.getElementById('renameInput').value = document.getElementById('portfolioName').textContent;
+    }
+
+    function saveRename() {
+        const newName = document.getElementById('renameInput').value.trim();
+        if (!newName) return;
+
+        const formData = new FormData();
+        formData.append('name', newName);
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+        fetch("{% url 'portfolio-rename' object.pk %}", {
+            method: 'POST',
+            body: formData
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('portfolioName').textContent = data.name;
+                document.title = data.name;
+                cancelRename();
+            } else {
+                alert(data.message || 'Failed to rename.');
+            }
+        })
+        .catch(() => alert('Network error. Please try again.'));
+    }
+</script>
 {% endblock %}

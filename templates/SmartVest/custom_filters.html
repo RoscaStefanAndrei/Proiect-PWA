@@ -1,8 +1,8 @@
 {% extends 'base.html' %}
 
-{% block title %}Filtre Custom{% endblock %}
+{% block title %}Custom Filters{% endblock %}
 
-{% block header_title %}Filtre Custom{% endblock %}
+{% block header_title %}Custom Filters{% endblock %}
 
 {% block content %}
 <style>
@@ -243,7 +243,7 @@
     <div class="filters-main">
         <!-- Descriptive Filters -->
         <div class="filter-section descriptive">
-            <h4><i class="fas fa-info-circle"></i> Filtre Descriptive</h4>
+            <h4><i class="fas fa-info-circle"></i> Descriptive Filters</h4>
             <div class="filter-grid">
                 {% for key, values in filters.descriptive.items %}
                 <div class="filter-item" data-filter="{{ key }}">
@@ -260,7 +260,7 @@
 
         <!-- Fundamental Filters -->
         <div class="filter-section fundamental">
-            <h4><i class="fas fa-chart-bar"></i> Filtre Fundamentale</h4>
+            <h4><i class="fas fa-chart-bar"></i> Fundamental Filters</h4>
             <div class="filter-grid">
                 {% for key, values in filters.fundamental.items %}
                 <div class="filter-item" data-filter="{{ key }}">
@@ -277,7 +277,7 @@
 
         <!-- Technical Filters -->
         <div class="filter-section technical">
-            <h4><i class="fas fa-chart-line"></i> Filtre Tehnice</h4>
+            <h4><i class="fas fa-chart-line"></i> Technical Filters</h4>
             <div class="filter-grid">
                 {% for key, values in filters.technical.items %}
                 <div class="filter-item" data-filter="{{ key }}">
@@ -296,42 +296,42 @@
     <div class="sidebar-panel">
         <!-- Active Filters -->
         <div class="actions-panel">
-            <h5><i class="fas fa-filter me-2"></i>Filtre Active</h5>
+            <h5><i class="fas fa-filter me-2"></i>Active Filters</h5>
             <div class="active-filters" id="activeFilters">
-                <span class="text-muted small">Niciun filtru selectat</span>
+                <span class="text-muted small">No filters selected</span>
             </div>
 
-            <label class="small text-muted mb-2 d-block">Buget de investit ($)</label>
+            <label class="small text-muted mb-2 d-block">Investment Budget ($)</label>
             <input type="number" class="investment-input" id="investmentAmount" value="10000" min="1000" step="100">
 
             <button class="btn btn-run-analysis text-white mb-2" onclick="runAnalysis()">
-                <i class="fas fa-rocket me-2"></i>Pornește Analiza
+                <i class="fas fa-rocket me-2"></i>Start Analysis
             </button>
 
             <hr class="border-secondary my-3">
 
             <div class="input-group mb-2">
                 <input type="text" class="form-control form-control-sm bg-dark text-white border-secondary"
-                    id="presetName" placeholder="Nume preset...">
+                    id="presetName" placeholder="Preset name...">
             </div>
             <button class="btn btn-save-preset text-white" onclick="savePreset()">
-                <i class="fas fa-save me-2"></i>Salvează Preset
+                <i class="fas fa-save me-2"></i>Save Preset
             </button>
         </div>
 
         <!-- Saved Presets -->
         <div class="presets-panel">
-            <h5><i class="fas fa-bookmark me-2"></i>Preset-uri Salvate</h5>
+            <h5><i class="fas fa-bookmark me-2"></i>Saved Presets</h5>
             {% if presets %}
             {% for preset in presets %}
             <div class="preset-item">
                 <span class="preset-name">{{ preset.name }}</span>
                 <div class="preset-actions">
                     <a href="{% url 'run-with-preset' preset.pk %}?budget=10000" class="btn btn-sm btn-outline-success"
-                        title="Rulează">
+                        title="Run">
                         <i class="fas fa-play"></i>
                     </a>
-                    <a href="{% url 'delete-preset' preset.pk %}" class="btn btn-sm btn-outline-danger" title="Șterge">
+                    <a href="{% url 'delete-preset' preset.pk %}" class="btn btn-sm btn-outline-danger" title="Delete">
                         <i class="fas fa-trash"></i>
                     </a>
                 </div>
@@ -340,7 +340,7 @@
             {% else %}
             <div class="no-presets">
                 <i class="fas fa-inbox mb-2" style="font-size: 1.5rem; opacity: 0.5;"></i>
-                <p class="mb-0">Nu ai preset-uri salvate</p>
+                <p class="mb-0">No saved presets</p>
             </div>
             {% endif %}
         </div>
@@ -370,7 +370,7 @@
         const keys = Object.keys(currentFilters);
 
         if (keys.length === 0) {
-            container.innerHTML = '<span class="text-muted small">Niciun filtru selectat</span>';
+            container.innerHTML = '<span class="text-muted small">No filters selected</span>';
             return;
         }
 
@@ -398,12 +398,12 @@
         const name = document.getElementById('presetName').value.trim();
 
         if (!name) {
-            alert('Te rog introdu un nume pentru preset!');
+            alert('Please enter a name for the preset!');
             return;
         }
 
         if (Object.keys(currentFilters).length === 0) {
-            alert('Te rog selectează cel puțin un filtru!');
+            alert('Please select at least one filter!');
             return;
         }
 
@@ -424,14 +424,14 @@
                     alert(data.message);
                     location.reload();
                 } else {
-                    alert('Eroare: ' + data.message);
+                    alert('Error: ' + data.message);
                 }
             });
     }
 
     function runAnalysis() {
         if (Object.keys(currentFilters).length === 0) {
-            alert('Te rog selectează cel puțin un filtru!');
+            alert('Please select at least one filter!');
             return;
         }
 
@@ -454,7 +454,7 @@
                 if (data.success) {
                     window.location.href = `/presets/${data.preset_id}/run/?budget=${budget}`;
                 } else {
-                    alert('Eroare: ' + data.message);
+                    alert('Error: ' + data.message);
                 }
             });
     }

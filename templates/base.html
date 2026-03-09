@@ -32,23 +32,23 @@
                 </a>
                 <a href="{% url 'portfolio-list' %}"
                     class="list-group-item list-group-item-action bg-transparent text-white fw-bold mb-2 sidebar-link">
-                    <i class="fas fa-wallet me-3"></i>Portofolii
+                    <i class="fas fa-wallet me-3"></i>Portfolios
                 </a>
                 <a href="{% url 'market-news' %}"
                     class="list-group-item list-group-item-action bg-transparent text-white fw-bold mb-2 sidebar-link">
-                    <i class="fas fa-newspaper me-3"></i>Stiri
+                    <i class="fas fa-newspaper me-3"></i>News
                 </a>
                 <a href="{% url 'run-analysis' %}"
                     class="list-group-item list-group-item-action bg-transparent text-white fw-bold mb-2 sidebar-link">
-                    <i class="fas fa-search-dollar me-3"></i>Analiza Noua
+                    <i class="fas fa-search-dollar me-3"></i>New Analysis
                 </a>
                 <a href="{% url 'unicorn-scanner' %}"
                     class="list-group-item list-group-item-action bg-transparent text-white fw-bold mb-2 sidebar-link">
-                    <i class="fas fa-horse-head me-3"></i>Unicorni 🦄
+                    <i class="fas fa-horse-head me-3"></i>Unicorns 🦄
                 </a>
                 <a href="{% url 'presets-list' %}"
                     class="list-group-item list-group-item-action bg-transparent text-white fw-bold mb-2 sidebar-link">
-                    <i class="fas fa-bookmark me-3"></i>Preset-uri Salvate
+                    <i class="fas fa-bookmark me-3"></i>Saved Presets
                 </a>
                 {% if user.is_superuser %}
                 <a href="{% url 'admin-dashboard' %}"
@@ -61,7 +61,7 @@
                 </a>
                 <a href="{% url 'backtest-results' %}"
                     class="list-group-item list-group-item-action bg-transparent text-white fw-bold mb-2 sidebar-link">
-                    <i class="fas fa-chart-bar me-3"></i>Rezultate Backtesting
+                    <i class="fas fa-chart-bar me-3"></i>Backtest Results
                 </a>
                 {% endif %}
             </div>
@@ -83,7 +83,7 @@
             <!-- Top Navigation -->
             <nav class="navbar navbar-expand-lg navbar-dark bg-transparent py-4 px-4">
                 <div class="d-flex align-items-center">
-                    <h2 class="fs-2 m-0 text-white fw-bold">{% block header_title %}Meniu principal{% endblock %}</h2>
+                    <h2 class="fs-2 m-0 text-white fw-bold">{% block header_title %}Main Menu{% endblock %}</h2>
                 </div>
 
                 <button class="navbar-toggler" type="button" data-bs-toggle="collapse"

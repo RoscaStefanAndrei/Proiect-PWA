@@ -55,7 +55,7 @@ def profile(request):
         if u_form.is_valid() and p_form.is_valid():
             u_form.save()
             p_form.save()
-            messages.success(request, f'Contul tău a fost actualizat!')
+            messages.success(request, f'Your account has been updated!')
             return redirect('profile')
     else:
         # Ensure profile exists (fallback for superusers created via CLI)
@@ -78,7 +78,7 @@ def delete_profile(request):
         username = user.username
         # Delete user
         user.delete()
-        messages.success(request, f'Profilul "{username}" a fost șters cu succes.')
+        messages.success(request, f'The profile "{username}" has been successfully deleted.')
         return redirect('login')
         
     return render(request, 'SmartVest/profile_confirm_delete.html')
@@ -133,6 +133,19 @@ class PortfolioDeleteView(LoginRequiredMixin, UserPassesTestMixin, DeleteView):
         if self.request.user == portfolio.user:
             return True
         return False
+
+@login_required
+def rename_portfolio(request, pk):
+    """Rename a portfolio via AJAX POST"""
+    portfolio = get_object_or_404(SavedPortfolio, pk=pk, user=request.user)
+    if request.method == 'POST':
+        new_name = request.POST.get('name', '').strip()
+        if new_name:
+            portfolio.name = new_name
+            portfolio.save()
+            return JsonResponse({'success': True, 'name': new_name})
+        return JsonResponse({'success': False, 'message': 'Name cannot be empty.'})
+    return JsonResponse({'success': False, 'message': 'Invalid request.'})
 
 # ==========================
 # ALGORITHM INTEGRATION
@@ -508,7 +521,7 @@ def save_preset(request):
             return JsonResponse({
                 'success': True, 
                 'preset_id': preset.id,
-                'message': f'Preset "{name}" salvat cu succes!'
+                'message': f'Preset "{name}" saved successfully!'
             })
         except Exception as e:
             return JsonResponse({'success': False, 'message': str(e)})
@@ -521,7 +534,7 @@ def delete_preset(request, pk):
     preset = get_object_or_404(FilterPreset, pk=pk, user=request.user)
     preset_name = preset.name
     preset.delete()
-    messages.success(request, f'Preset "{preset_name}" șters cu succes!')
+    messages.success(request, f'Preset "{preset_name}" deleted successfully!')
     return redirect('presets-list')
 
 @login_required
@@ -539,7 +552,7 @@ def update_preset(request, pk):
         preset.name = request.POST.get('name', preset.name)
         preset.description = request.POST.get('description', preset.description)
         preset.save()
-        messages.success(request, f'Preset "{preset.name}" actualizat cu succes!')
+        messages.success(request, f'Preset "{preset.name}" updated successfully!')
         return redirect('presets-list')
     
     return redirect('presets-list')
@@ -552,7 +565,7 @@ def run_with_preset(request, pk):
     preset = get_object_or_404(FilterPreset, pk=pk, user=request.user)
     
     if ALGO_RUNNING:
-        messages.warning(request, "O analiză este deja în desfășurare!")
+        messages.warning(request, "An analysis is already running!")
         return redirect('analysis-status')
     
     budget = float(request.GET.get('budget', 10000))
@@ -562,7 +575,7 @@ def run_with_preset(request, pk):
     thread.daemon = True
     thread.start()
     
-    messages.success(request, f"Analiză pornită cu preset-ul '{preset.name}' și buget ${budget:,.2f}.")
+    messages.success(request, f"Analysis started with preset '{preset.name}' and budget ${budget:,.2f}.")
     return redirect('analysis-status')
 
 def run_algo_script_custom(filters_dict, budget=10000.0):
@@ -802,7 +815,7 @@ def add_to_watchlist(request, ticker):
         
         # Check if already watched
         if WatchedUnicorn.objects.filter(user=request.user, ticker=ticker).exists():
-            messages.warning(request, f'{ticker} este deja în watchlist!')
+            messages.warning(request, f'{ticker} is already in your watchlist!')
         else:
             WatchedUnicorn.objects.create(
                 user=request.user,
@@ -810,7 +823,7 @@ def add_to_watchlist(request, ticker):
                 company_name=stock_info.get('Company', '') if stock_info else '',
                 entry_price=stock_info.get('Price') if stock_info else None,
             )
-            messages.success(request, f'{ticker} a fost adăugat în watchlist! 🦄')
+            messages.success(request, f'{ticker} has been added to your watchlist! 🦄')
     
     return redirect('unicorn-scanner')
 
@@ -821,7 +834,7 @@ def remove_from_watchlist(request, pk):
     watched = get_object_or_404(WatchedUnicorn, pk=pk, user=request.user)
     ticker = watched.ticker
     watched.delete()
-    messages.success(request, f'{ticker} a fost șters din watchlist.')
+    messages.success(request, f'{ticker} has been removed from your watchlist.')
     return redirect('unicorn-scanner')
 
 
@@ -850,7 +863,7 @@ def _run_backtest_thread(start_date, end_date, profile_type, initial_capital):
     BACKTEST_PROGRESS['running'] = True
     BACKTEST_PROGRESS['result'] = None
     BACKTEST_PROGRESS['percent'] = 0
-    BACKTEST_PROGRESS['message'] = 'Se inițializează...'
+    BACKTEST_PROGRESS['message'] = 'Initializing...'
     
     try:
         from backtester import BacktestEngine
@@ -897,7 +910,7 @@ def backtest_view(request):
     
     if request.method == 'POST':
         if BACKTEST_PROGRESS.get('running'):
-            messages.warning(request, "Un backtest este deja în desfășurare!")
+            messages.warning(request, "A backtest is already running!")
             return redirect('backtest')
         
         # Parse form data
@@ -920,7 +933,7 @@ def backtest_view(request):
         thread.daemon = True
         thread.start()
         
-        messages.success(request, f"Backtest pornit: {profile_type.title()}, {period_years}Y, ${initial_capital:,.0f}")
+        messages.success(request, f"Backtest started: {profile_type.title()}, {period_years}Y, ${initial_capital:,.0f}")
         
         # Wait for completion (with timeout)
         import time as time_module

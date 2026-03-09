@@ -1,8 +1,8 @@
 {% extends 'base.html' %}
 
-{% block title %}Analiză Nouă{% endblock %}
+{% block title %}New Analysis{% endblock %}
 
-{% block header_title %}Analiză Nouă{% endblock %}
+{% block header_title %}New Analysis{% endblock %}
 
 {% block content %}
 <style>
@@ -364,17 +364,17 @@
                     <i class="fas fa-chart-pie"></i>
                 </div>
                 <div>
-                    <h3 class="fw-bold mb-1">Generează Portofoliu Nou</h3>
-                    <p class="text-muted mb-0 small">Algoritmul nostru avansat va analiza mii de acțiuni pentru
-                        portofoliul optim.</p>
+                    <h3 class="fw-bold mb-1">Generate New Portfolio</h3>
+                    <p class="text-muted mb-0 small">Our advanced algorithm will analyze thousands of stocks for the
+                        optimal portfolio.</p>
                 </div>
             </div>
 
             <div class="d-flex flex-wrap mb-3">
-                <span class="feature-badge"><i class="fas fa-filter"></i> Filtrare Fundamentală</span>
-                <span class="feature-badge"><i class="fas fa-chart-line"></i> Analiză Tehnică</span>
-                <span class="feature-badge"><i class="fas fa-balance-scale"></i> Optimizare Risc</span>
-                <span class="feature-badge"><i class="fas fa-coins"></i> Alocare Automată</span>
+                <span class="feature-badge"><i class="fas fa-filter"></i> Fundamental Filtering</span>
+                <span class="feature-badge"><i class="fas fa-chart-line"></i> Technical Analysis</span>
+                <span class="feature-badge"><i class="fas fa-balance-scale"></i> Risk Optimization</span>
+                <span class="feature-badge"><i class="fas fa-coins"></i> Auto Allocation</span>
             </div>
 
             {% if running %}
@@ -382,9 +382,9 @@
                 <div class="spinner-border text-warning" role="status" style="width: 2rem; height: 2rem;">
                     <span class="visually-hidden">Loading...</span>
                 </div>
-                <span class="text-warning fw-bold">O analiză este în desfășurare...</span>
+                <span class="text-warning fw-bold">An analysis is in progress...</span>
                 <a href="{% url 'analysis-status' %}" class="btn btn-view-progress ms-auto">
-                    <i class="fas fa-eye me-2"></i>Vezi Progresul
+                    <i class="fas fa-eye me-2"></i>View Progress
                 </a>
             </div>
             {% else %}
@@ -396,14 +396,14 @@
                 <div class="form-section">
                     <div class="investment-input-wrapper">
                         <label for="investment_amount" class="form-label text-muted mb-2 small">
-                            <i class="fas fa-dollar-sign me-2"></i>Suma de investit
+                            <i class="fas fa-dollar-sign me-2"></i>Investment Amount
                         </label>
                         <div class="input-group">
                             <span class="input-group-text bg-transparent border-0 text-success fs-5">$</span>
                             <input type="number" class="form-control" id="investment_amount" name="investment_amount"
                                 value="10000" min="1000" step="100" required>
                         </div>
-                        <small class="text-muted mt-1 d-block">Minim $1,000</small>
+                        <small class="text-muted mt-1 d-block">Minimum $1,000</small>
                     </div>
 
                     <div class="strategy-selector" id="strategySelector">
@@ -411,24 +411,24 @@
                             <button type="button" class="strategy-option" data-value="balanced">
                                 <div class="option-icon balanced"><i class="fas fa-balance-scale"></i></div>
                                 <div class="option-details">
-                                    <div class="option-name">Balansat</div>
-                                    <div class="option-desc">Echilibru între creștere și stabilitate</div>
+                                    <div class="option-name">Balanced</div>
+                                    <div class="option-desc">Balance between growth and stability</div>
                                 </div>
                                 <i class="fas fa-check option-check"></i>
                             </button>
                             <button type="button" class="strategy-option" data-value="conservative">
                                 <div class="option-icon conservative"><i class="fas fa-shield-alt"></i></div>
                                 <div class="option-details">
-                                    <div class="option-name">Pasiv</div>
-                                    <div class="option-desc">Risc scăzut, dividende mari</div>
+                                    <div class="option-name">Conservative</div>
+                                    <div class="option-desc">Low risk, high dividends</div>
                                 </div>
                                 <i class="fas fa-check option-check"></i>
                             </button>
                             <button type="button" class="strategy-option" data-value="aggressive">
                                 <div class="option-icon aggressive"><i class="fas fa-rocket"></i></div>
                                 <div class="option-details">
-                                    <div class="option-name">Agresiv</div>
-                                    <div class="option-desc">Creștere maximă, volatilitate acceptată</div>
+                                    <div class="option-name">Aggressive</div>
+                                    <div class="option-desc">Maximum growth, higher volatility accepted</div>
                                 </div>
                                 <i class="fas fa-check option-check"></i>
                             </button>
@@ -449,12 +449,12 @@
                                 <i class="fas fa-balance-scale"></i>
                             </div>
                             <div class="strategy-info">
-                                <div class="strategy-label">Strategie selectată</div>
-                                <div class="strategy-name" id="currentStrategyName">Balansat</div>
+                                <div class="strategy-label">Selected Strategy</div>
+                                <div class="strategy-name" id="currentStrategyName">Balanced</div>
                             </div>
                             <button type="button" class="btn-change-strategy" id="toggleStrategyMenu">
                                 <i class="fas fa-chevron-up"></i>
-                                Modifică
+                                Change
                             </button>
                         </div>
                     </div>
@@ -462,11 +462,11 @@
 
                 <div class="action-row">
                     <button type="submit" class="btn btn-start-analysis">
-                        <i class="fas fa-rocket me-2"></i>Pornește Analiza
+                        <i class="fas fa-rocket me-2"></i>Start Analysis
                     </button>
                     <div class="time-notice">
                         <i class="fas fa-clock"></i>
-                        <span>Procesul durează aproximativ <strong>6-7 minute</strong></span>
+                        <span>This process takes approximately <strong>6-7 minutes</strong></span>
                     </div>
                 </div>
             </form>
@@ -485,9 +485,9 @@
         const currentStrategyName = document.getElementById('currentStrategyName');
 
         const strategyData = {
-            balanced: { name: 'Balansat', icon: 'fa-balance-scale', class: 'balanced' },
-            conservative: { name: 'Pasiv', icon: 'fa-shield-alt', class: 'conservative' },
-            aggressive: { name: 'Agresiv', icon: 'fa-rocket', class: 'aggressive' },
+            balanced: { name: 'Balanced', icon: 'fa-balance-scale', class: 'balanced' },
+            conservative: { name: 'Conservative', icon: 'fa-shield-alt', class: 'conservative' },
+            aggressive: { name: 'Aggressive', icon: 'fa-rocket', class: 'aggressive' },
             custom: { name: 'Custom', icon: 'fa-sliders-h', class: 'custom' }
         };
 

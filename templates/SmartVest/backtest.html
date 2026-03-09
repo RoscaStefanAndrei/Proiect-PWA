@@ -262,7 +262,7 @@
                 <i class="fas fa-flask text-success fs-3 me-3"></i>
                 <div>
                     <h4 class="mb-0 fw-bold">Backtesting Engine</h4>
-                    <small class="text-muted">Testează algoritmul pe date istorice</small>
+                    <small class="text-muted">Test the algorithm on historical data</small>
                 </div>
             </div>
 
@@ -270,16 +270,16 @@
                 {% csrf_token %}
                 <div class="row g-4">
                     <div class="col-md-3">
-                        <div class="param-label">Perioadă</div>
+                        <div class="param-label">Period</div>
                         <select name="period" class="form-select" id="periodSelect">
-                            <option value="1">1 An</option>
-                            <option value="2" selected>2 Ani</option>
-                            <option value="3">3 Ani</option>
+                            <option value="1">1 Year</option>
+                            <option value="2" selected>2 Years</option>
+                            <option value="3">3 Years</option>
                         </select>
                     </div>
 
                     <div class="col-md-3">
-                        <div class="param-label">Profil Investiție</div>
+                        <div class="param-label">Investment Profile</div>
                         <select name="profile_type" class="form-select" id="profileSelect">
                             <option value="conservative">🛡️ Conservative</option>
                             <option value="balanced" selected>⚖️ Balanced</option>
@@ -288,7 +288,7 @@
                     </div>
 
                     <div class="col-md-3">
-                        <div class="param-label">Capital Inițial ($)</div>
+                        <div class="param-label">Initial Capital ($)</div>
                         <input type="number" name="initial_capital" class="form-control" value="10000" min="1000"
                             max="10000000" step="1000" id="capitalInput">
                     </div>
@@ -308,7 +308,7 @@
                         <span class="progress-percent" id="progressPercent">0%</span>
                     </div>
                 </div>
-                <div class="progress-message" id="progressMessage">Se inițializează...</div>
+                <div class="progress-message" id="progressMessage">Initializing...</div>
                 <div class="progress-steps" id="progressLog"></div>
             </div>
         </div>
@@ -321,7 +321,7 @@
             <div class="backtest-card mb-4">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h5 class="fw-bold mb-0">
-                        <i class="fas fa-chart-line text-success me-2"></i>Rezultate Backtest
+                        <i class="fas fa-chart-line text-success me-2"></i>Backtest Results
                     </h5>
                     <div>
                         <span class="profile-badge {{ result.profile_type }}">{{ result.profile_type }}</span>
@@ -337,7 +337,7 @@
                                 class="metric-value {% if result.metrics.total_return >= 0 %}positive{% else %}negative{% endif %}">
                                 {{ result.metrics.total_return|floatformat:1 }}%
                             </div>
-                            <div class="metric-label">Randament Total</div>
+                            <div class="metric-label">Total Return</div>
                         </div>
                     </div>
                     <div class="col-6 col-md-3">
@@ -374,7 +374,7 @@
                             <div class="metric-value" style="font-size:1.3rem; color:#17a2b8;">
                                 ${{ result.metrics.final_value|floatformat:0 }}
                             </div>
-                            <div class="metric-label">Valoare Finală</div>
+                            <div class="metric-label">Final Value</div>
                         </div>
                     </div>
                     <div class="col-6 col-md-2">
@@ -382,7 +382,7 @@
                             <div class="metric-value neutral" style="font-size:1.3rem;">
                                 {{ result.metrics.annual_volatility|floatformat:1 }}%
                             </div>
-                            <div class="metric-label">Volatilitate</div>
+                            <div class="metric-label">Volatility</div>
                         </div>
                     </div>
                     <div class="col-6 col-md-2">
@@ -427,7 +427,7 @@
             <div class="chart-container">
                 <h6 class="fw-bold mb-3">
                     <i class="fas fa-chart-area text-success me-2"></i>
-                    Evoluția Portofoliului vs S&P 500
+                    Portfolio Evolution vs S&P 500
                 </h6>
                 <canvas id="equityChart"></canvas>
             </div>
@@ -446,16 +446,16 @@
             <div class="backtest-card mt-4">
                 <h6 class="fw-bold mb-3">
                     <i class="fas fa-sync-alt text-success me-2"></i>
-                    Rebalansări ({{ result.snapshots|length }})
+                    Rebalances ({{ result.snapshots|length }})
                 </h6>
                 <div class="table-responsive">
                     <table class="table table-dark snapshot-table">
                         <thead>
                             <tr>
-                                <th>Data</th>
-                                <th>Valoare Portofoliu</th>
-                                <th>Nr. Acțiuni</th>
-                                <th>Alocări</th>
+                                <th>Date</th>
+                                <th>Portfolio Value</th>
+                                <th>Nr. Stocks</th>
+                                <th>Allocations</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -484,7 +484,7 @@
             <div class="backtest-card mt-4">
                 <h6 class="fw-bold mb-3">
                     <i class="fas fa-balance-scale text-info me-2"></i>
-                    Comparație cu S&P 500
+                    Comparison with S&P 500
                 </h6>
                 <div class="row g-3">
                     <div class="col-md-4">
@@ -493,7 +493,7 @@
                                 class="metric-value {% if result.metrics.total_return >= 0 %}positive{% else %}negative{% endif %}">
                                 {{ result.metrics.total_return|floatformat:1 }}%
                             </div>
-                            <div class="metric-label">Portofoliu SmartVest</div>
+                            <div class="metric-label">SmartVest Portfolio</div>
                         </div>
                     </div>
                     <div class="col-md-4">
@@ -511,7 +511,7 @@
                                 {% if result.metrics.outperformance >= 0 %}+{% endif %}{{
                                 result.metrics.outperformance|floatformat:1 }}%
                             </div>
-                            <div class="metric-label">Supraperformanță</div>
+                            <div class="metric-label">Outperformance</div>
                         </div>
                     </div>
                 </div>
@@ -524,7 +524,7 @@
                 <div class="d-flex align-items-start">
                     <i class="fas fa-exclamation-triangle text-warning me-3 mt-1"></i>
                     <div>
-                        <h6 class="fw-bold mb-2" style="color: #ffc107;">Limitări Metodologice</h6>
+                        <h6 class="fw-bold mb-2" style="color: #ffc107;">Methodological Limitations</h6>
                         <p class="text-muted mb-0" style="font-size: 0.85rem; line-height: 1.6;">
                             {{ result.disclaimer }}
                         </p>
@@ -555,7 +555,7 @@
             // Show progress bar
             progressContainer.classList.add('active');
             runBtn.disabled = true;
-            runBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Se rulează...';
+            runBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Running...';
 
             // Start polling for progress
             pollInterval = setInterval(pollProgress, 1500);
@@ -565,7 +565,7 @@
             fetch('{% url "backtest-progress" %}')
                 .then(response => response.json())
                 .then(data => {
-                    updateProgress(data.percent || 0, data.message || 'Se procesează...');
+                    updateProgress(data.percent || 0, data.message || 'Processing...');
 
                     if (data.percent >= 100) {
                         clearInterval(pollInterval);
@@ -608,7 +608,7 @@
                 labels: {{ result.equity_curve.dates | safe }},
         datasets: [
         {
-            label: 'Portofoliu SmartVest',
+            label: 'SmartVest Portfolio',
             data: {{ result.equity_curve.values | safe }},
         borderColor: '#28a745',
         backgroundColor: 'rgba(40, 167, 69, 0.1)',

@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% block title %}Login{% endblock %}
-{% block header_title %}Autentificare{% endblock %}
+{% block header_title %}Sign In{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
@@ -9,18 +9,18 @@
             <div class="card-body p-5">
                 <div class="text-center mb-4">
                     <i class="fas fa-user-circle fa-3x text-muted mb-3"></i>
-                    <h3 class="card-title fw-bold">Bun venit</h3>
+                    <h3 class="card-title fw-bold">Welcome</h3>
                 </div>
                 <form method="POST">
                     {% csrf_token %}
                     {{ form.as_p }}
                     <div class="d-grid mt-4">
-                        <button class="btn btn-primary rounded-pill fw-bold" type="submit">Autentificare</button>
+                        <button class="btn btn-primary rounded-pill fw-bold" type="submit">Sign In</button>
                     </div>
                 </form>
                 <div class="mt-4 text-center">
-                    <small class="text-muted">Nu ai cont? <a href="{% url 'register' %}"
-                            class="text-decoration-none fw-bold text-success">Înregistrează-te</a></small>
+                    <small class="text-muted">Don't have an account? <a href="{% url 'register' %}"
+                            class="text-decoration-none fw-bold text-success">Sign Up</a></small>
                 </div>
             </div>
         </div>

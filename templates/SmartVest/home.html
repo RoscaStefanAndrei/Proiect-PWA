@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
-{% block title %}Acasa{% endblock %}
+{% block title %}Home{% endblock %}
 
-{% block header_title %}Meniu principal{% endblock %}
+{% block header_title %}Main Menu{% endblock %}
 
 {% block content %}
 <!-- Dashboard Header Section -->
@@ -46,7 +46,7 @@
         <div class="d-flex gap-2">
             <a href="{% url 'run-analysis' %}"
                 class="btn btn-outline-light rounded-pill px-3 py-1 bg-dark-card border-0 fw-bold d-flex align-items-center">
-                <i class="fas fa-plus me-2 text-primary"></i>Adaugă bani
+                <i class="fas fa-plus me-2 text-primary"></i>Add Funds
             </a>
             <button
                 class="btn btn-outline-light rounded-pill px-3 py-1 bg-dark-card border-0 fw-bold d-flex align-items-center">
@@ -54,7 +54,7 @@
             </button>
             <button
                 class="btn btn-outline-light rounded-pill px-3 py-1 bg-dark-card border-0 fw-bold d-flex align-items-center">
-                <i class="fas fa-info-circle me-2 text-primary"></i>Detalii
+                <i class="fas fa-info-circle me-2 text-primary"></i>Details
             </button>
             <button
                 class="btn btn-outline-light rounded-pill px-3 py-1 bg-dark-card border-0 fw-bold d-flex align-items-center">
@@ -69,7 +69,7 @@
     <div class="col-12">
         {% if performance_data %}
         <div class="d-flex justify-content-between align-items-center mb-3">
-            <span class="text-muted fw-bold small text-uppercase">Portofolii Recente</span>
+            <span class="text-muted fw-bold small text-uppercase">Recent Portfolios</span>
         </div>
 
         <div class="list-group list-group-flush">
@@ -94,7 +94,7 @@
                             {% if item.profit_loss >= 0 %}
                             <span class="text-secondary">{{ item.portfolio.created_at|date:"d M, H:i" }}</span>
                             {% else %}
-                            <span class="text-secondary">Atenție · Scădere</span>
+                            <span class="text-secondary">Warning · Decline</span>
                             {% endif %}
                         </div>
                     </div>
@@ -128,7 +128,7 @@
         </div>
 
         <div class="text-center mt-3 mb-5">
-            <a href="{% url 'portfolio-list' %}" class="btn btn-outline-light border-0 text-muted fw-bold">Vezi tot</a>
+            <a href="{% url 'portfolio-list' %}" class="btn btn-outline-light border-0 text-muted fw-bold">View All</a>
         </div>
 
         {% else %}
@@ -140,10 +140,10 @@
                     <i class="fas fa-plus fa-3x text-muted"></i>
                 </div>
             </div>
-            <h3 class="fw-bold text-white mb-2">Începe să investești</h3>
-            <p class="text-muted mb-4 px-5">Creează primul tău portofoliu inteligent și urmărește-l aici.</p>
+            <h3 class="fw-bold text-white mb-2">Start Investing</h3>
+            <p class="text-muted mb-4 px-5">Create your first smart portfolio and track it here.</p>
             <a href="{% url 'run-analysis' %}" class="btn btn-primary rounded-pill px-5 fw-bold">
-                Analiză Nouă
+                New Analysis
             </a>
         </div>
         {% endif %}
