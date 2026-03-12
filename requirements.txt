@@ -1,0 +1,10 @@
+Django==6.0.1
+pandas==2.3.3
+numpy==1.26.4
+yfinance==0.2.66
+pandas-ta==0.4.71b0
+pyportfolioopt==1.5.6
+finvizfinance==1.2.0
+matplotlib==3.9.2
+Pillow>=10.0
+Faker==40.1.2

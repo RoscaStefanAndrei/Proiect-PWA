@@ -1116,6 +1116,23 @@ class BacktestEngine:
                 if portfolio_peak > 0 and holdings:
                     current_drawdown = (daily_value_check / portfolio_peak) - 1
                     
+                    # --- Ciclu 9 C9-3: Bear Market Cash Buffer ---
+                    # In bear market, conservative/balanced move 15% to cash as cushion
+                    if (not bull_market and 
+                        self.profile_type in ('conservative', 'balanced') and
+                        not getattr(self, '_bear_buffer_active', False)):
+                        self._bear_buffer_active = True
+                        for t in list(holdings.keys()):
+                            if t in price_df.columns:
+                                ps = price_df[t].loc[:day].dropna()
+                                if not ps.empty:
+                                    sell_shares = holdings[t] * 0.15
+                                    cash += sell_shares * ps.iloc[-1]
+                                    holdings[t] -= sell_shares
+                        print(f"  -> C9-3: Bear buffer activated for {self.profile_type}. 15% to cash at {day.date()}")
+                    elif bull_market and getattr(self, '_bear_buffer_active', False):
+                        self._bear_buffer_active = False
+
                     # Ciclu 6: disable forced rebalance in bull market for aggressive/balanced
                     force_rebalance_enabled = True
                     if bull_market and self.profile_type in ('aggressive', 'balanced'):

@@ -1,30 +1,378 @@
-from django.shortcuts import render, redirect, get_object_or_404
+"""
+SmartVest Views
+===============
+All view functions and class-based views for the SmartVest application.
+
+Tier 1 improvements applied:
+- Consolidated imports (no duplicates)
+- Thread-safe state management via Django cache (replaces global mutable dicts)
+- CSRF enforcement on all POST endpoints
+- Input validation and sanitization
+- Proper error handling with try/except on all external API calls
+- Python logging replaces print() statements
+- Require POST for all destructive/mutating operations
+"""
+
+import datetime
+import json
+import logging
+import os
+import subprocess
+import sys
+import threading
+
+import pandas as pd
+
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
-from django.http import JsonResponse
-import datetime
-import threading
+from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.contrib.auth.models import User
-from .forms import UserRegisterForm, UserProfileForm, UserUpdateForm
+from django.core.cache import cache
 from django.db import models as db_models
-from .models import UserProfile, SavedPortfolio, BacktestRun
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse_lazy
+from django.utils.decorators import method_decorator
+from django.views.decorators.http import require_POST, require_http_methods
+from django.views.generic import DeleteView, DetailView, ListView
+
+from .forms import (
+    SavedPortfolioForm,
+    UserProfileForm,
+    UserRegisterForm,
+    UserUpdateForm,
+)
+from .models import (
+    BacktestRun,
+    FilterPreset,
+    SavedPortfolio,
+    UserProfile,
+    WatchedUnicorn,
+)
+from .utils import fetch_prices_cached, get_portfolio_performance
+
+logger = logging.getLogger(__name__)
+
+# Add project root to path for importing standalone scripts
+if str(settings.BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(settings.BASE_DIR))
+
+
+# ============================================================================
+# THREAD-SAFE STATE HELPERS (replaces global mutable variables)
+# ============================================================================
+
+# Cache keys
+ALGO_RUNNING_KEY = "smartvest_algo_running"
+BACKTEST_PROGRESS_KEY = "smartvest_backtest_progress"
+
+# Default backtest progress state
+_DEFAULT_BACKTEST_PROGRESS = {
+    'percent': 0,
+    'message': 'Idle',
+    'running': False,
+    'result': None,
+}
+
+
+def _get_algo_running():
+    """Thread-safe check if algorithm is running."""
+    return cache.get(ALGO_RUNNING_KEY, False)
+
+
+def _set_algo_running(value):
+    """Thread-safe set algorithm running state."""
+    cache.set(ALGO_RUNNING_KEY, value, timeout=3600)  # 1 hour max
+
+
+def _get_backtest_progress():
+    """Thread-safe get backtest progress."""
+    return cache.get(BACKTEST_PROGRESS_KEY, _DEFAULT_BACKTEST_PROGRESS.copy())
+
+
+def _set_backtest_progress(progress):
+    """Thread-safe set backtest progress."""
+    cache.set(BACKTEST_PROGRESS_KEY, progress, timeout=7200)  # 2 hour max
+
+
+# ============================================================================
+# CONSTANTS
+# ============================================================================
+
+# Validation constants
+MAX_PORTFOLIO_NAME_LENGTH = 100
+MAX_BUDGET = 10_000_000  # $10M cap
+MIN_BUDGET = 100  # $100 minimum
+VALID_PROFILE_TYPES = ('conservative', 'balanced', 'aggressive')
+MAX_PRESET_NAME_LENGTH = 100
+
+# All available Finviz filters organized by category
+FINVIZ_FILTERS = {
+    'descriptive': {
+        'Exchange': ['Any', 'AMEX', 'NASDAQ', 'NYSE'],
+        'Market Cap.': [
+            'Any', 'Mega ($200bln and more)', 'Large ($10bln to $200bln)',
+            '+Large (over $10bln)', 'Mid ($2bln to $10bln)', '+Mid (over $2bln)',
+            'Small ($300mln to $2bln)', '+Small (over $300mln)',
+            'Micro ($50mln to $300mln)', 'Nano (under $50mln)',
+        ],
+        'Dividend Yield': [
+            'Any', 'None (0%)', 'Positive (>0%)', 'High (>5%)', 'Very High (>10%)',
+        ],
+        'Average Volume': [
+            'Any', 'Under 50K', 'Under 100K', 'Under 500K', 'Under 750K',
+            'Under 1M', 'Over 50K', 'Over 100K', 'Over 200K', 'Over 300K',
+            'Over 400K', 'Over 500K', 'Over 750K', 'Over 1M', 'Over 2M',
+        ],
+        'Relative Volume': [
+            'Any', 'Over 0.25', 'Over 0.5', 'Over 1', 'Over 1.5', 'Over 2',
+            'Over 3', 'Over 5', 'Over 10', 'Under 0.5', 'Under 0.75',
+            'Under 1', 'Under 1.5', 'Under 2',
+        ],
+        'Float': [
+            'Any', 'Under 1M', 'Under 5M', 'Under 10M', 'Under 20M',
+            'Under 50M', 'Under 100M', 'Over 1M', 'Over 2M', 'Over 5M',
+            'Over 10M', 'Over 20M', 'Over 50M', 'Over 100M', 'Over 200M',
+            'Over 500M',
+        ],
+        'Sector': [
+            'Any', 'Basic Materials', 'Communication Services',
+            'Consumer Cyclical', 'Consumer Defensive', 'Energy', 'Financial',
+            'Healthcare', 'Industrials', 'Real Estate', 'Technology', 'Utilities',
+        ],
+        'Industry': ['Any'],
+        'Country': [
+            'Any', 'USA', 'Foreign (ex-USA)', 'China', 'Japan', 'UK',
+            'Canada', 'Germany', 'France',
+        ],
+    },
+    'fundamental': {
+        'P/E': [
+            'Any', 'Low (<15)', 'Profitable (>0)', 'High (>50)', 'Under 5',
+            'Under 10', 'Under 15', 'Under 20', 'Under 25', 'Under 30',
+            'Under 35', 'Under 40', 'Under 45', 'Under 50', 'Over 5',
+            'Over 10', 'Over 15', 'Over 20', 'Over 25', 'Over 30',
+            'Over 35', 'Over 40', 'Over 50',
+        ],
+        'Forward P/E': [
+            'Any', 'Low (<15)', 'Profitable (>0)', 'High (>50)', 'Under 5',
+            'Under 10', 'Under 15', 'Under 20', 'Under 25', 'Under 30',
+            'Over 5', 'Over 10', 'Over 15', 'Over 20', 'Over 25', 'Over 30',
+            'Over 35', 'Over 40', 'Over 50',
+        ],
+        'PEG': [
+            'Any', 'Low (<1)', 'High (>2)', 'Under 1', 'Under 2', 'Under 3',
+            'Over 1', 'Over 2', 'Over 3',
+        ],
+        'P/S': [
+            'Any', 'Low (<1)', 'High (>10)', 'Under 1', 'Under 2', 'Under 3',
+            'Under 4', 'Under 5', 'Under 6', 'Under 7', 'Under 8', 'Under 9',
+            'Under 10', 'Over 1', 'Over 2', 'Over 3', 'Over 4', 'Over 5',
+            'Over 6', 'Over 7', 'Over 8', 'Over 9', 'Over 10',
+        ],
+        'P/B': [
+            'Any', 'Low (<1)', 'High (>5)', 'Under 1', 'Under 2', 'Under 3',
+            'Under 4', 'Under 5', 'Under 6', 'Under 7', 'Under 8', 'Under 9',
+            'Under 10', 'Over 1', 'Over 2', 'Over 3', 'Over 4', 'Over 5',
+            'Over 6', 'Over 7', 'Over 8', 'Over 9', 'Over 10',
+        ],
+        'EPS growthnext 5 years': [
+            'Any', 'Negative (<0%)', 'Positive (>0%)', 'Under 5%', 'Under 10%',
+            'Under 15%', 'Under 20%', 'Under 25%', 'Under 30%', 'Over 5%',
+            'Over 10%', 'Over 15%', 'Over 20%', 'Over 25%', 'Over 30%',
+        ],
+        'EPS growththis year': [
+            'Any', 'Negative (<0%)', 'Positive (>0%)', 'Over 5%', 'Over 10%',
+            'Over 15%', 'Over 20%', 'Over 25%', 'Over 30%',
+        ],
+        'EPS growthnext year': [
+            'Any', 'Negative (<0%)', 'Positive (>0%)', 'Over 5%', 'Over 10%',
+            'Over 15%', 'Over 20%', 'Over 25%', 'Over 30%',
+        ],
+        'Return on Equity': [
+            'Any', 'Positive (>0%)', 'Negative (<0%)', 'Very Positive (>30%)',
+            'Over +5%', 'Over +10%', 'Over +15%', 'Over +20%', 'Over +25%',
+            'Over +30%', 'Under +5%', 'Under +10%', 'Under +15%', 'Under +20%',
+            'Under +25%', 'Under +30%', 'Under -15%', 'Under -30%',
+        ],
+        'Return on Assets': [
+            'Any', 'Positive (>0%)', 'Negative (<0%)', 'Very Positive (>15%)',
+            'Over +5%', 'Over +10%', 'Over +15%', 'Over +20%', 'Over +25%',
+        ],
+        'Return on Investment': [
+            'Any', 'Positive (>0%)', 'Negative (<0%)', 'Very Positive (>25%)',
+            'Over +5%', 'Over +10%', 'Over +15%', 'Over +20%', 'Over +25%',
+        ],
+        'Current Ratio': [
+            'Any', 'High (>3)', 'Low (<1)', 'Under 1', 'Under 0.5', 'Over 0.5',
+            'Over 1', 'Over 1.5', 'Over 2', 'Over 3', 'Over 4', 'Over 5',
+            'Over 10',
+        ],
+        'Debt/Equity': [
+            'Any', 'High (>0.5)', 'Low (<0.1)', 'Under 0.1', 'Under 0.2',
+            'Under 0.3', 'Under 0.4', 'Under 0.5', 'Under 0.6', 'Under 0.7',
+            'Under 0.8', 'Under 0.9', 'Under 1', 'Over 0.1', 'Over 0.2',
+            'Over 0.3', 'Over 0.4', 'Over 0.5', 'Over 0.6', 'Over 0.7',
+            'Over 0.8', 'Over 0.9', 'Over 1',
+        ],
+        'Gross Margin': [
+            'Any', 'Positive (>0%)', 'Negative (<0%)', 'High (>50%)', 'Over 0%',
+            'Over 10%', 'Over 20%', 'Over 30%', 'Over 40%', 'Over 50%',
+            'Over 60%', 'Over 70%', 'Over 80%', 'Over 90%',
+        ],
+        'Operating Margin': [
+            'Any', 'Positive (>0%)', 'Negative (<0%)', 'Very Negative (<-20%)',
+            'High (>25%)', 'Over 0%', 'Over 5%', 'Over 10%', 'Over 15%',
+            'Over 20%', 'Over 25%', 'Over 30%',
+        ],
+        'Net Profit Margin': [
+            'Any', 'Positive (>0%)', 'Negative (<0%)', 'Very Negative (<-20%)',
+            'High (>20%)', 'Over 0%', 'Over 5%', 'Over 10%', 'Over 15%',
+            'Over 20%', 'Over 25%', 'Over 30%',
+        ],
+    },
+    'technical': {
+        '20-Day Simple Moving Average': [
+            'Any', 'Price below SMA20', 'Price 10% below SMA20',
+            'Price 20% below SMA20', 'Price 30% below SMA20',
+            'Price 40% below SMA20', 'Price 50% below SMA20',
+            'Price above SMA20', 'Price 10% above SMA20',
+            'Price 20% above SMA20', 'Price 30% above SMA20',
+            'Price 40% above SMA20', 'Price 50% above SMA20',
+            'Price crossed SMA20', 'Price crossed SMA20 above',
+            'Price crossed SMA20 below', 'SMA20 crossed SMA50',
+            'SMA20 crossed SMA50 above', 'SMA20 crossed SMA50 below',
+        ],
+        '50-Day Simple Moving Average': [
+            'Any', 'Price below SMA50', 'Price 10% below SMA50',
+            'Price 20% below SMA50', 'Price 30% below SMA50',
+            'Price 40% below SMA50', 'Price 50% below SMA50',
+            'Price above SMA50', 'Price 10% above SMA50',
+            'Price 20% above SMA50', 'Price 30% above SMA50',
+            'Price 40% above SMA50', 'Price 50% above SMA50',
+            'Price crossed SMA50', 'Price crossed SMA50 above',
+            'Price crossed SMA50 below', 'SMA50 crossed SMA200',
+            'SMA50 crossed SMA200 above', 'SMA50 crossed SMA200 below',
+        ],
+        '200-Day Simple Moving Average': [
+            'Any', 'Price below SMA200', 'Price 10% below SMA200',
+            'Price 20% below SMA200', 'Price 30% below SMA200',
+            'Price 40% below SMA200', 'Price 50% below SMA200',
+            'Price above SMA200', 'Price 10% above SMA200',
+            'Price 20% above SMA200', 'Price 30% above SMA200',
+            'Price 40% above SMA200', 'Price 50% above SMA200',
+            'Price crossed SMA200', 'Price crossed SMA200 above',
+            'Price crossed SMA200 below',
+        ],
+        'RSI (14)': [
+            'Any', 'Overbought (90)', 'Overbought (80)', 'Overbought (70)',
+            'Overbought (60)', 'Oversold (40)', 'Oversold (30)', 'Oversold (20)',
+            'Oversold (10)', 'Not Overbought (<60)', 'Not Overbought (<50)',
+            'Not Oversold (>50)', 'Not Oversold (>40)',
+        ],
+        'Beta': [
+            'Any', 'Under 0', 'Under 0.5', 'Under 1', 'Under 1.5', 'Under 2',
+            'Over 0', 'Over 0.5', 'Over 1', 'Over 1.5', 'Over 2', 'Over 2.5',
+            'Over 3', 'Over 4',
+        ],
+        'Volatility': [
+            'Any', 'Week - Over 3%', 'Week - Over 4%', 'Week - Over 5%',
+            'Week - Over 6%', 'Week - Over 7%', 'Week - Over 8%',
+            'Week - Over 9%', 'Week - Over 10%', 'Week - Over 12%',
+            'Week - Over 15%', 'Month - Over 2%', 'Month - Over 3%',
+            'Month - Over 4%', 'Month - Over 5%', 'Month - Over 6%',
+            'Month - Over 8%', 'Month - Over 10%',
+        ],
+        'Gap': [
+            'Any', 'Up', 'Up 0%', 'Up 1%', 'Up 2%', 'Up 3%', 'Up 4%', 'Up 5%',
+            'Down', 'Down 0%', 'Down 1%', 'Down 2%', 'Down 3%', 'Down 4%',
+            'Down 5%',
+        ],
+        '52W High/Low': [
+            'Any', 'New High', 'New Low', '0-3% below High', '0-5% below High',
+            '0-10% below High', '5-10% below High', '10-15% below High',
+            '15-20% below High', '20-30% below High', '30-40% below High',
+            '40-50% below High', '50%+ below High', '0-3% above Low',
+            '0-5% above Low', '0-10% above Low', '5-10% above Low',
+            '10-15% above Low', '15-20% above Low', '20-30% above Low',
+            '30-40% above Low', '40-50% above Low', '50%+ above Low',
+        ],
+        'Pattern': [
+            'Any', 'Horizontal S/R', 'Horizontal S/R (Strong)', 'TL Resistance',
+            'TL Resistance (Strong)', 'TL Support', 'TL Support (Strong)',
+            'Wedge Up', 'Wedge Up (Strong)', 'Wedge Down', 'Wedge Down (Strong)',
+            'Triangle Ascending', 'Triangle Ascending (Strong)',
+            'Triangle Descending', 'Triangle Descending (Strong)', 'Wedge',
+            'Wedge (Strong)', 'Channel Up', 'Channel Up (Strong)',
+            'Channel Down', 'Channel Down (Strong)', 'Channel',
+            'Channel (Strong)', 'Double Top', 'Double Bottom', 'Multiple Top',
+            'Multiple Bottom', 'Head & Shoulders', 'Head & Shoulders Inverse',
+        ],
+    },
+}
+
+
+# ============================================================================
+# HELPER: Input Validation
+# ============================================================================
+
+def _validate_profile_type(value, default='balanced'):
+    """Validate and sanitize profile type input."""
+    value = str(value).strip().lower()
+    if value in VALID_PROFILE_TYPES:
+        return value
+    logger.warning("Invalid profile_type received: %s, defaulting to %s", value, default)
+    return default
+
+
+def _validate_budget(value, default=10000.0):
+    """Validate and sanitize budget input."""
+    try:
+        budget = float(value)
+        if budget < MIN_BUDGET:
+            logger.warning("Budget too low: %.2f, setting to minimum %.2f", budget, MIN_BUDGET)
+            return MIN_BUDGET
+        if budget > MAX_BUDGET:
+            logger.warning("Budget too high: %.2f, capping at %.2f", budget, MAX_BUDGET)
+            return MAX_BUDGET
+        return budget
+    except (ValueError, TypeError):
+        logger.warning("Invalid budget value: %s, defaulting to %.2f", value, default)
+        return default
+
+
+def _sanitize_name(value, max_length=MAX_PORTFOLIO_NAME_LENGTH):
+    """Sanitize a name input - strip whitespace, enforce length."""
+    if not value:
+        return ''
+    return str(value).strip()[:max_length]
+
+
+# ============================================================================
+# AUTHENTICATION & USER MANAGEMENT
+# ============================================================================
 
 @login_required
 def home(request):
+    """Dashboard with portfolio performance summary."""
     performance_data = []
     total_balance = 0.0
     total_profit_loss = 0.0
     total_daily_pl = 0.0
-    
-    if request.user.is_authenticated:
+
+    try:
         portfolios = SavedPortfolio.objects.filter(user=request.user).order_by('-created_at')
         performance_data = get_portfolio_performance(portfolios)
-        
+
         for item in performance_data:
             total_balance += item['current_value']
             total_profit_loss += item['profit_loss']
             total_daily_pl += item.get('total_daily_pl', 0.0)
-    
+    except Exception:
+        logger.exception("Error loading portfolio performance for user %s", request.user.username)
+        messages.error(request, "Could not load portfolio data. Please try again.")
+
     context = {
         'performance_data': performance_data,
         'total_balance': total_balance,
@@ -33,77 +381,86 @@ def home(request):
     }
     return render(request, 'SmartVest/home.html', context)
 
+
 def register(request):
+    """User registration view."""
     if request.method == 'POST':
         form = UserRegisterForm(request.POST)
         if form.is_valid():
             user = form.save()
-            # Create a profile for the user
             UserProfile.objects.create(user=user)
             username = form.cleaned_data.get('username')
+            logger.info("New user registered: %s", username)
             messages.success(request, f'Account created for {username}! You can now login.')
             return redirect('login')
     else:
         form = UserRegisterForm()
     return render(request, 'SmartVest/register.html', {'form': form})
 
+
 @login_required
 def profile(request):
+    """View/edit user profile."""
+    # Ensure profile exists (fallback for superusers created via CLI)
+    if not hasattr(request.user, 'userprofile'):
+        UserProfile.objects.create(user=request.user)
+
     if request.method == 'POST':
         u_form = UserUpdateForm(request.POST, instance=request.user)
         p_form = UserProfileForm(request.POST, request.FILES, instance=request.user.userprofile)
         if u_form.is_valid() and p_form.is_valid():
             u_form.save()
             p_form.save()
-            messages.success(request, f'Your account has been updated!')
+            logger.info("Profile updated for user: %s", request.user.username)
+            messages.success(request, 'Your account has been updated!')
             return redirect('profile')
     else:
-        # Ensure profile exists (fallback for superusers created via CLI)
-        if not hasattr(request.user, 'userprofile'):
-            UserProfile.objects.create(user=request.user)
-            
         u_form = UserUpdateForm(instance=request.user)
         p_form = UserProfileForm(instance=request.user.userprofile)
 
-    context = {
-        'u_form': u_form,
-        'p_form': p_form
-    }
+    context = {'u_form': u_form, 'p_form': p_form}
     return render(request, 'SmartVest/profile.html', context)
+
 
 @login_required
 def delete_profile(request):
+    """Delete user account. Shows confirmation on GET, deletes on POST."""
     if request.method == 'POST':
         user = request.user
         username = user.username
-        # Delete user
+        logger.info("User account deleted: %s", username)
         user.delete()
         messages.success(request, f'The profile "{username}" has been successfully deleted.')
         return redirect('login')
-        
+
     return render(request, 'SmartVest/profile_confirm_delete.html')
 
-from .models import SavedPortfolio
-from .forms import SavedPortfolioForm
-from django.shortcuts import get_object_or_404
-from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
-from django.views.generic import ListView, CreateView, UpdateView, DeleteView, DetailView
 
-# Using CBVs for CRUD is cleaner standard practice in Django
+# ============================================================================
+# PORTFOLIO MANAGEMENT (CBVs)
+# ============================================================================
+
 class PortfolioListView(LoginRequiredMixin, ListView):
     model = SavedPortfolio
     template_name = 'SmartVest/portfolio_list.html'
     context_object_name = 'portfolios'
     ordering = ['-created_at']
+    paginate_by = 12  # Tier 2: paginate to limit yfinance calls per page
 
     def get_queryset(self):
         return SavedPortfolio.objects.filter(user=self.request.user).order_by('-created_at')
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        portfolios = self.get_queryset()
-        context['performance_data'] = get_portfolio_performance(portfolios)
+        try:
+            # Only fetch prices for the current page's portfolios (not all)
+            page_portfolios = context['portfolios']
+            context['performance_data'] = get_portfolio_performance(page_portfolios)
+        except Exception:
+            logger.exception("Error loading portfolio performance in list view")
+            context['performance_data'] = []
         return context
+
 
 class PortfolioDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
     model = SavedPortfolio
@@ -111,580 +468,537 @@ class PortfolioDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
 
     def test_func(self):
         portfolio = self.get_object()
-        if self.request.user == portfolio.user:
-            return True
-        return False
+        return self.request.user == portfolio.user
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        portfolio = self.get_object()
-        perf = get_portfolio_performance([portfolio])
-        if perf:
-            context['perf'] = perf[0]
+        try:
+            portfolio = self.get_object()
+            perf = get_portfolio_performance([portfolio])
+            if perf:
+                context['perf'] = perf[0]
+        except Exception:
+            logger.exception("Error loading portfolio detail performance")
         return context
+
 
 class PortfolioDeleteView(LoginRequiredMixin, UserPassesTestMixin, DeleteView):
     model = SavedPortfolio
     template_name = 'SmartVest/portfolio_confirm_delete.html'
-    success_url = '/portfolios/' # Redirecting to portfolio list after delete
+    success_url = reverse_lazy('portfolio-list')
 
     def test_func(self):
         portfolio = self.get_object()
-        if self.request.user == portfolio.user:
-            return True
-        return False
+        return self.request.user == portfolio.user
+
 
 @login_required
+@require_POST
 def rename_portfolio(request, pk):
-    """Rename a portfolio via AJAX POST"""
+    """Rename a portfolio via AJAX POST."""
     portfolio = get_object_or_404(SavedPortfolio, pk=pk, user=request.user)
-    if request.method == 'POST':
-        new_name = request.POST.get('name', '').strip()
-        if new_name:
-            portfolio.name = new_name
-            portfolio.save()
-            return JsonResponse({'success': True, 'name': new_name})
-        return JsonResponse({'success': False, 'message': 'Name cannot be empty.'})
-    return JsonResponse({'success': False, 'message': 'Invalid request.'})
+    new_name = _sanitize_name(request.POST.get('name', ''))
+    if not new_name:
+        return JsonResponse({'success': False, 'message': 'Name cannot be empty.'}, status=400)
 
-# ==========================
+    portfolio.name = new_name
+    portfolio.save(update_fields=['name', 'updated_at'])
+    logger.info("Portfolio %d renamed to '%s' by user %s", pk, new_name, request.user.username)
+    return JsonResponse({'success': True, 'name': new_name})
+
+
+# ============================================================================
 # ALGORITHM INTEGRATION
-# ==========================
-import threading
-import subprocess
-import os
-import pandas as pd
-from django.conf import settings
+# ============================================================================
 
-# Global flag for simplicity in this demo (single instance)
-ALGO_RUNNING = False
-
-def run_algo_script(profile_type='balanced', budget=10000.0):
-    global ALGO_RUNNING
-    ALGO_RUNNING = True
-    print(f"Starting Algorithm Script with Profile: {profile_type}, Budget: {budget}...")
+def _run_algo_script(profile_type='balanced', budget=10000.0):
+    """Execute selection algorithm in background thread."""
+    _set_algo_running(True)
+    logger.info("Starting algorithm: profile=%s, budget=%.2f", profile_type, budget)
     try:
-        # Path to the script (Assuming it's in the project root c:\Licenta\Proiect-PWA\selection_algorithm.py)
-        # settings.BASE_DIR is c:\Licenta\Proiect-PWA\finance_project\.. -> c:\Licenta\Proiect-PWA
         script_path = os.path.join(settings.BASE_DIR, 'selection_algorithm.py')
-        
-        # Run it with arguments
-        command = ["python", script_path, "--profile", str(profile_type), "--budget", str(budget)]
-        
-        # capture_output=True to avoid cluttering main stdout, or False to see it in console
-        subprocess.run(command, cwd=settings.BASE_DIR, check=True)
-        print("Algorithm Script Finished.")
-    except Exception as e:
-        print(f"Algorithm Error: {e}")
+        if not os.path.isfile(script_path):
+            logger.error("Selection algorithm script not found: %s", script_path)
+            return
+
+        command = [
+            sys.executable, script_path,
+            "--profile", str(profile_type),
+            "--budget", str(budget),
+        ]
+        result = subprocess.run(
+            command, cwd=str(settings.BASE_DIR),
+            capture_output=True, text=True, timeout=600,  # 10 min timeout
+        )
+        if result.returncode != 0:
+            logger.error("Algorithm failed (exit %d): %s", result.returncode, result.stderr[:500])
+        else:
+            logger.info("Algorithm completed successfully.")
+    except subprocess.TimeoutExpired:
+        logger.error("Algorithm timed out after 600 seconds.")
+    except Exception:
+        logger.exception("Algorithm execution error")
     finally:
-        ALGO_RUNNING = False
+        _set_algo_running(False)
 
-@login_required
-def run_analysis(request):
-    global ALGO_RUNNING
-    
-    # Defaults
-    initial_type = request.GET.get('type', 'balanced')
-    
-    if request.method == 'POST':
-        if ALGO_RUNNING:
-            messages.warning(request, "Analysis is already running! Please wait.")
-        else:
-            profile_type = request.POST.get('portfolio_type', 'balanced')
-            try:
-                budget = float(request.POST.get('investment_amount', 10000))
-            except ValueError:
-                budget = 10000.0
-                
-            # Start in background thread
-            thread = threading.Thread(target=run_algo_script, args=(profile_type, budget))
-            thread.daemon = True
-            thread.start()
-            messages.success(request, f"Analysis started with {profile_type.title()} profile and ${budget:,.2f} budget. This may take a few minutes.")
-            
-        return redirect('analysis-status')
-        
-    return render(request, 'SmartVest/run_analysis.html', {'running': ALGO_RUNNING, 'initial_type': initial_type})
 
-@login_required
-def select_portfolio_type(request):
-    return render(request, 'SmartVest/portfolio_type_selection.html')
-
-@login_required
-def analysis_status(request):
-    return render(request, 'SmartVest/analysis_status.html', {'running': ALGO_RUNNING})
-
-@login_required
-def view_results(request):
-    # Load the CSVs if they exist
-    results_path = os.path.join(settings.BASE_DIR, 'alocare_finala_portofoliu.csv')
-    comp_path = os.path.join(settings.BASE_DIR, 'companii_selectie_finala.csv')
-    
-    results_data = []
-    
-    # Check if results exist
-    if os.path.exists(results_path):
-        try:
-            df = pd.read_csv(results_path)
-            # Clean up column names for template access if necessary
-            # e.g. "Valoare_Investitie ($)" might be hard to access in template
-            df.columns = [c.replace(' ', '_').replace('($)', 'USD').replace('(', '').replace(')', '') for c in df.columns]
-            results_data = df.to_dict('records')
-        except Exception as e:
-            print(f"Error reading CSV: {e}")
-            
-    context = {
-        'results': results_data,
-        'has_results': (len(results_data) > 0)
-    }
-    return render(request, 'SmartVest/results.html', context)
-
-@login_required
-def save_portfolio(request):
-    if request.method == 'POST':
-        name = request.POST.get('portfolio_name')
-        description = request.POST.get('portfolio_description', '')
-        
-        # Load current results from CSV
-        results_path = os.path.join(settings.BASE_DIR, 'alocare_finala_portofoliu.csv')
-        portfolio_data = []
-        
-        if os.path.exists(results_path):
-            try:
-                df = pd.read_csv(results_path)
-                # Cleaning columns
-                df.columns = [c.replace(' ', '_').replace('($)', 'USD').replace('(', '').replace(')', '') for c in df.columns]
-                portfolio_data = df.to_dict('records')
-            except Exception as e:
-                print(f"Error reading CSV for saving: {e}")
-                messages.error(request, "Failed to read portfolio data.")
-                return redirect('view-results')
-        else:
-             messages.error(request, "No portfolio results found to save.")
-             return redirect('view-results')
-
-        if portfolio_data:
-            SavedPortfolio.objects.create(
-                user=request.user,
-                name=name,
-                description=description,
-                portfolio_data=portfolio_data
-            )
-            messages.success(request, f"Portfolio '{name}' saved successfully!")
-            return redirect('portfolio-list')
-            
-    return redirect('view-results')
-
-import yfinance as yf
-from .utils import get_portfolio_performance
-
-@login_required
-def track_performance(request):
-    portfolios = SavedPortfolio.objects.filter(user=request.user)
-    performance_data = get_portfolio_performance(portfolios)
-
-    context = {
-        'performance_data': performance_data
-    }
-    return render(request, 'SmartVest/portfolio_performance.html', context)
-
-# ==========================
-# MARKET NEWS
-# ==========================
-from gnews import GNews
-
-@login_required
-def market_news(request):
-    # Initialize GNews
-    google_news = GNews(language='en', country='US', period='1d', max_results=10)
-    
-    # Get Business/Finance news
-    # GNews doesn't have a direct 'finance' topic in the simple wrapper sometimes, 
-    # but 'BUSINESS' is standard. Or we can search for "Stock Market".
-    try:
-        raw_news = google_news.get_news_by_topic('BUSINESS')
-        # Clean keys for Django template compatibility (replace space with underscore)
-        news_results = []
-        for article in raw_news:
-            clean_article = {k.replace(' ', '_'): v for k, v in article.items()}
-            news_results.append(clean_article)
-    except Exception as e:
-        print(f"GNews Error: {e}")
-        news_results = []
-    
-    return render(request, 'SmartVest/market_news.html', {'news': news_results})
-
-from django.contrib.auth.decorators import login_required, user_passes_test
-from django.contrib.auth.models import User
-
-# ... existing imports ...
-
-# ==========================
-# ADMIN DASHBOARD
-# ==========================
-@user_passes_test(lambda u: u.is_superuser)
-def admin_dashboard(request):
-    # Statistics
-    total_users = User.objects.count()
-    total_portfolios = SavedPortfolio.objects.count()
-    
-    # User Details
-    users = User.objects.all().order_by('-date_joined')
-    user_data = []
-    
-    for u in users:
-        portfolio_count = SavedPortfolio.objects.filter(user=u).count()
-        user_data.append({
-            'user': u,
-            'portfolio_count': portfolio_count
-        })
-
-    context = {
-        'total_users': total_users,
-        'total_portfolios': total_portfolios,
-        'user_data': user_data
-    }
-    return render(request, 'SmartVest/admin_dashboard.html', context)
-
-@user_passes_test(lambda u: u.is_superuser)
-def admin_user_detail(request, user_id):
-    user = get_object_or_404(User, pk=user_id)
-    portfolios = SavedPortfolio.objects.filter(user=user)
-    performance_data = get_portfolio_performance(portfolios)
-    
-    context = {
-        'target_user': user,
-        'performance_data': performance_data
-    }
-    return render(request, 'SmartVest/admin_user_detail.html', context)
-
-# ==========================
-# CUSTOM FILTERS & PRESETS
-# ==========================
-from .models import FilterPreset
-import json
-
-# All available Finviz filters organized by category
-FINVIZ_FILTERS = {
-    'descriptive': {
-        'Exchange': ['Any', 'AMEX', 'NASDAQ', 'NYSE'],
-        'Market Cap.': ['Any', 'Mega ($200bln and more)', 'Large ($10bln to $200bln)', '+Large (over $10bln)', 
-                       'Mid ($2bln to $10bln)', '+Mid (over $2bln)', 'Small ($300mln to $2bln)', 
-                       '+Small (over $300mln)', 'Micro ($50mln to $300mln)', 'Nano (under $50mln)'],
-        'Dividend Yield': ['Any', 'None (0%)', 'Positive (>0%)', 'High (>5%)', 'Very High (>10%)'],
-        'Average Volume': ['Any', 'Under 50K', 'Under 100K', 'Under 500K', 'Under 750K', 'Under 1M', 
-                          'Over 50K', 'Over 100K', 'Over 200K', 'Over 300K', 'Over 400K', 'Over 500K', 
-                          'Over 750K', 'Over 1M', 'Over 2M'],
-        'Relative Volume': ['Any', 'Over 0.25', 'Over 0.5', 'Over 1', 'Over 1.5', 'Over 2', 'Over 3', 
-                           'Over 5', 'Over 10', 'Under 0.5', 'Under 0.75', 'Under 1', 'Under 1.5', 'Under 2'],
-        'Float': ['Any', 'Under 1M', 'Under 5M', 'Under 10M', 'Under 20M', 'Under 50M', 'Under 100M', 
-                  'Over 1M', 'Over 2M', 'Over 5M', 'Over 10M', 'Over 20M', 'Over 50M', 'Over 100M', 'Over 200M', 'Over 500M'],
-        'Sector': ['Any', 'Basic Materials', 'Communication Services', 'Consumer Cyclical', 
-                   'Consumer Defensive', 'Energy', 'Financial', 'Healthcare', 'Industrials', 
-                   'Real Estate', 'Technology', 'Utilities'],
-        'Industry': ['Any'],  # Too many to list, we'll keep "Any" for simplicity
-        'Country': ['Any', 'USA', 'Foreign (ex-USA)', 'China', 'Japan', 'UK', 'Canada', 'Germany', 'France'],
-    },
-    'fundamental': {
-        'P/E': ['Any', 'Low (<15)', 'Profitable (>0)', 'High (>50)', 'Under 5', 'Under 10', 'Under 15', 
-                'Under 20', 'Under 25', 'Under 30', 'Under 35', 'Under 40', 'Under 45', 'Under 50', 
-                'Over 5', 'Over 10', 'Over 15', 'Over 20', 'Over 25', 'Over 30', 'Over 35', 'Over 40', 'Over 50'],
-        'Forward P/E': ['Any', 'Low (<15)', 'Profitable (>0)', 'High (>50)', 'Under 5', 'Under 10', 
-                       'Under 15', 'Under 20', 'Under 25', 'Under 30', 'Over 5', 'Over 10', 'Over 15', 
-                       'Over 20', 'Over 25', 'Over 30', 'Over 35', 'Over 40', 'Over 50'],
-        'PEG': ['Any', 'Low (<1)', 'High (>2)', 'Under 1', 'Under 2', 'Under 3', 'Over 1', 'Over 2', 'Over 3'],
-        'P/S': ['Any', 'Low (<1)', 'High (>10)', 'Under 1', 'Under 2', 'Under 3', 'Under 4', 'Under 5', 
-                'Under 6', 'Under 7', 'Under 8', 'Under 9', 'Under 10', 'Over 1', 'Over 2', 'Over 3', 
-                'Over 4', 'Over 5', 'Over 6', 'Over 7', 'Over 8', 'Over 9', 'Over 10'],
-        'P/B': ['Any', 'Low (<1)', 'High (>5)', 'Under 1', 'Under 2', 'Under 3', 'Under 4', 'Under 5', 
-                'Under 6', 'Under 7', 'Under 8', 'Under 9', 'Under 10', 'Over 1', 'Over 2', 'Over 3', 
-                'Over 4', 'Over 5', 'Over 6', 'Over 7', 'Over 8', 'Over 9', 'Over 10'],
-        'EPS growthnext 5 years': ['Any', 'Negative (<0%)', 'Positive (>0%)', 'Under 5%', 'Under 10%', 
-                                   'Under 15%', 'Under 20%', 'Under 25%', 'Under 30%', 'Over 5%', 
-                                   'Over 10%', 'Over 15%', 'Over 20%', 'Over 25%', 'Over 30%'],
-        'EPS growththis year': ['Any', 'Negative (<0%)', 'Positive (>0%)', 'Over 5%', 'Over 10%', 
-                               'Over 15%', 'Over 20%', 'Over 25%', 'Over 30%'],
-        'EPS growthnext year': ['Any', 'Negative (<0%)', 'Positive (>0%)', 'Over 5%', 'Over 10%', 
-                               'Over 15%', 'Over 20%', 'Over 25%', 'Over 30%'],
-        'Return on Equity': ['Any', 'Positive (>0%)', 'Negative (<0%)', 'Very Positive (>30%)', 
-                            'Over +5%', 'Over +10%', 'Over +15%', 'Over +20%', 'Over +25%', 
-                            'Over +30%', 'Under +5%', 'Under +10%', 'Under +15%', 'Under +20%', 
-                            'Under +25%', 'Under +30%', 'Under -15%', 'Under -30%'],
-        'Return on Assets': ['Any', 'Positive (>0%)', 'Negative (<0%)', 'Very Positive (>15%)', 
-                            'Over +5%', 'Over +10%', 'Over +15%', 'Over +20%', 'Over +25%'],
-        'Return on Investment': ['Any', 'Positive (>0%)', 'Negative (<0%)', 'Very Positive (>25%)', 
-                                'Over +5%', 'Over +10%', 'Over +15%', 'Over +20%', 'Over +25%'],
-        'Current Ratio': ['Any', 'High (>3)', 'Low (<1)', 'Under 1', 'Under 0.5', 'Over 0.5', 
-                         'Over 1', 'Over 1.5', 'Over 2', 'Over 3', 'Over 4', 'Over 5', 'Over 10'],
-        'Debt/Equity': ['Any', 'High (>0.5)', 'Low (<0.1)', 'Under 0.1', 'Under 0.2', 'Under 0.3', 
-                       'Under 0.4', 'Under 0.5', 'Under 0.6', 'Under 0.7', 'Under 0.8', 'Under 0.9', 
-                       'Under 1', 'Over 0.1', 'Over 0.2', 'Over 0.3', 'Over 0.4', 'Over 0.5', 
-                       'Over 0.6', 'Over 0.7', 'Over 0.8', 'Over 0.9', 'Over 1'],
-        'Gross Margin': ['Any', 'Positive (>0%)', 'Negative (<0%)', 'High (>50%)', 'Over 0%', 
-                        'Over 10%', 'Over 20%', 'Over 30%', 'Over 40%', 'Over 50%', 'Over 60%', 
-                        'Over 70%', 'Over 80%', 'Over 90%'],
-        'Operating Margin': ['Any', 'Positive (>0%)', 'Negative (<0%)', 'Very Negative (<-20%)', 
-                            'High (>25%)', 'Over 0%', 'Over 5%', 'Over 10%', 'Over 15%', 'Over 20%', 
-                            'Over 25%', 'Over 30%'],
-        'Net Profit Margin': ['Any', 'Positive (>0%)', 'Negative (<0%)', 'Very Negative (<-20%)', 
-                             'High (>20%)', 'Over 0%', 'Over 5%', 'Over 10%', 'Over 15%', 'Over 20%', 
-                             'Over 25%', 'Over 30%'],
-    },
-    'technical': {
-        '20-Day Simple Moving Average': ['Any', 'Price below SMA20', 'Price 10% below SMA20', 
-                                         'Price 20% below SMA20', 'Price 30% below SMA20', 
-                                         'Price 40% below SMA20', 'Price 50% below SMA20', 
-                                         'Price above SMA20', 'Price 10% above SMA20', 
-                                         'Price 20% above SMA20', 'Price 30% above SMA20', 
-                                         'Price 40% above SMA20', 'Price 50% above SMA20', 
-                                         'Price crossed SMA20', 'Price crossed SMA20 above', 
-                                         'Price crossed SMA20 below', 'SMA20 crossed SMA50', 
-                                         'SMA20 crossed SMA50 above', 'SMA20 crossed SMA50 below'],
-        '50-Day Simple Moving Average': ['Any', 'Price below SMA50', 'Price 10% below SMA50', 
-                                         'Price 20% below SMA50', 'Price 30% below SMA50', 
-                                         'Price 40% below SMA50', 'Price 50% below SMA50', 
-                                         'Price above SMA50', 'Price 10% above SMA50', 
-                                         'Price 20% above SMA50', 'Price 30% above SMA50', 
-                                         'Price 40% above SMA50', 'Price 50% above SMA50', 
-                                         'Price crossed SMA50', 'Price crossed SMA50 above', 
-                                         'Price crossed SMA50 below', 'SMA50 crossed SMA200', 
-                                         'SMA50 crossed SMA200 above', 'SMA50 crossed SMA200 below'],
-        '200-Day Simple Moving Average': ['Any', 'Price below SMA200', 'Price 10% below SMA200', 
-                                          'Price 20% below SMA200', 'Price 30% below SMA200', 
-                                          'Price 40% below SMA200', 'Price 50% below SMA200', 
-                                          'Price above SMA200', 'Price 10% above SMA200', 
-                                          'Price 20% above SMA200', 'Price 30% above SMA200', 
-                                          'Price 40% above SMA200', 'Price 50% above SMA200', 
-                                          'Price crossed SMA200', 'Price crossed SMA200 above', 
-                                          'Price crossed SMA200 below'],
-        'RSI (14)': ['Any', 'Overbought (90)', 'Overbought (80)', 'Overbought (70)', 'Overbought (60)', 
-                    'Oversold (40)', 'Oversold (30)', 'Oversold (20)', 'Oversold (10)', 
-                    'Not Overbought (<60)', 'Not Overbought (<50)', 'Not Oversold (>50)', 
-                    'Not Oversold (>40)'],
-        'Beta': ['Any', 'Under 0', 'Under 0.5', 'Under 1', 'Under 1.5', 'Under 2', 
-                 'Over 0', 'Over 0.5', 'Over 1', 'Over 1.5', 'Over 2', 'Over 2.5', 
-                 'Over 3', 'Over 4'],
-        'Volatility': ['Any', 'Week - Over 3%', 'Week - Over 4%', 'Week - Over 5%', 
-                      'Week - Over 6%', 'Week - Over 7%', 'Week - Over 8%', 'Week - Over 9%', 
-                      'Week - Over 10%', 'Week - Over 12%', 'Week - Over 15%', 
-                      'Month - Over 2%', 'Month - Over 3%', 'Month - Over 4%', 
-                      'Month - Over 5%', 'Month - Over 6%', 'Month - Over 8%', 
-                      'Month - Over 10%'],
-        'Gap': ['Any', 'Up', 'Up 0%', 'Up 1%', 'Up 2%', 'Up 3%', 'Up 4%', 'Up 5%', 
-                'Down', 'Down 0%', 'Down 1%', 'Down 2%', 'Down 3%', 'Down 4%', 'Down 5%'],
-        '52W High/Low': ['Any', 'New High', 'New Low', '0-3% below High', '0-5% below High', 
-                        '0-10% below High', '5-10% below High', '10-15% below High', 
-                        '15-20% below High', '20-30% below High', '30-40% below High', 
-                        '40-50% below High', '50%+ below High', '0-3% above Low', 
-                        '0-5% above Low', '0-10% above Low', '5-10% above Low', 
-                        '10-15% above Low', '15-20% above Low', '20-30% above Low', 
-                        '30-40% above Low', '40-50% above Low', '50%+ above Low'],
-        'Pattern': ['Any', 'Horizontal S/R', 'Horizontal S/R (Strong)', 'TL Resistance', 
-                   'TL Resistance (Strong)', 'TL Support', 'TL Support (Strong)', 
-                   'Wedge Up', 'Wedge Up (Strong)', 'Wedge Down', 'Wedge Down (Strong)', 
-                   'Triangle Ascending', 'Triangle Ascending (Strong)', 'Triangle Descending', 
-                   'Triangle Descending (Strong)', 'Wedge', 'Wedge (Strong)', 
-                   'Channel Up', 'Channel Up (Strong)', 'Channel Down', 'Channel Down (Strong)', 
-                   'Channel', 'Channel (Strong)', 'Double Top', 'Double Bottom', 
-                   'Multiple Top', 'Multiple Bottom', 'Head & Shoulders', 'Head & Shoulders Inverse'],
-    }
-}
-
-@login_required
-def custom_filters(request):
-    """Page with all Finviz filter options"""
-    presets = FilterPreset.objects.filter(user=request.user)
-    
-    context = {
-        'filters': FINVIZ_FILTERS,
-        'presets': presets,
-        'filters_json': json.dumps(FINVIZ_FILTERS)
-    }
-    return render(request, 'SmartVest/custom_filters.html', context)
-
-@login_required
-def save_preset(request):
-    """Save a new filter preset via AJAX"""
-    if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-            name = data.get('name', 'My Preset')
-            filters = data.get('filters', {})
-            
-            # Create preset
-            preset = FilterPreset.objects.create(
-                user=request.user,
-                name=name,
-                filters=filters
-            )
-            
-            return JsonResponse({
-                'success': True, 
-                'preset_id': preset.id,
-                'message': f'Preset "{name}" saved successfully!'
-            })
-        except Exception as e:
-            return JsonResponse({'success': False, 'message': str(e)})
-    
-    return JsonResponse({'success': False, 'message': 'Invalid request'})
-
-@login_required
-def delete_preset(request, pk):
-    """Delete a filter preset"""
-    preset = get_object_or_404(FilterPreset, pk=pk, user=request.user)
-    preset_name = preset.name
-    preset.delete()
-    messages.success(request, f'Preset "{preset_name}" deleted successfully!')
-    return redirect('presets-list')
-
-@login_required
-def presets_list(request):
-    """List all user's filter presets"""
-    presets = FilterPreset.objects.filter(user=request.user)
-    return render(request, 'SmartVest/presets_list.html', {'presets': presets})
-
-@login_required
-def update_preset(request, pk):
-    """Update a filter preset's name and description"""
-    preset = get_object_or_404(FilterPreset, pk=pk, user=request.user)
-    
-    if request.method == 'POST':
-        preset.name = request.POST.get('name', preset.name)
-        preset.description = request.POST.get('description', preset.description)
-        preset.save()
-        messages.success(request, f'Preset "{preset.name}" updated successfully!')
-        return redirect('presets-list')
-    
-    return redirect('presets-list')
-
-@login_required  
-def run_with_preset(request, pk):
-    """Run analysis with a saved preset's filters"""
-    global ALGO_RUNNING
-    
-    preset = get_object_or_404(FilterPreset, pk=pk, user=request.user)
-    
-    if ALGO_RUNNING:
-        messages.warning(request, "An analysis is already running!")
-        return redirect('analysis-status')
-    
-    budget = float(request.GET.get('budget', 10000))
-    
-    # Start analysis with custom filters
-    thread = threading.Thread(target=run_algo_script_custom, args=(preset.filters, budget))
-    thread.daemon = True
-    thread.start()
-    
-    messages.success(request, f"Analysis started with preset '{preset.name}' and budget ${budget:,.2f}.")
-    return redirect('analysis-status')
-
-def run_algo_script_custom(filters_dict, budget=10000.0):
-    """Run algorithm with custom filters"""
-    global ALGO_RUNNING
-    ALGO_RUNNING = True
-    print(f"Starting Algorithm with Custom Filters and Budget: ${budget}...")
+def _run_algo_script_custom(filters_dict, budget=10000.0):
+    """Run algorithm with custom filters in background thread."""
+    _set_algo_running(True)
+    logger.info("Starting algorithm with custom filters, budget=%.2f", budget)
     try:
         script_path = os.path.join(settings.BASE_DIR, 'selection_algorithm.py')
-        
+        if not os.path.isfile(script_path):
+            logger.error("Selection algorithm script not found: %s", script_path)
+            return
+
         # Save filters to temp file to avoid shell escaping issues
         temp_filters_path = os.path.join(settings.BASE_DIR, 'temp_custom_filters.json')
         with open(temp_filters_path, 'w', encoding='utf-8') as f:
             json.dump(filters_dict, f)
-        
-        command = ["python", script_path, "--custom-filters-file", temp_filters_path, "--budget", str(budget)]
-        
-        subprocess.run(command, cwd=settings.BASE_DIR, check=True)
-        print("Algorithm Script Finished.")
-        
-        # Cleanup temp file
-        if os.path.exists(temp_filters_path):
-            os.remove(temp_filters_path)
-    except Exception as e:
-        print(f"Algorithm Error: {e}")
-    finally:
-        ALGO_RUNNING = False
 
-from django.http import JsonResponse
+        command = [
+            sys.executable, script_path,
+            "--custom-filters-file", temp_filters_path,
+            "--budget", str(budget),
+        ]
+        result = subprocess.run(
+            command, cwd=str(settings.BASE_DIR),
+            capture_output=True, text=True, timeout=600,
+        )
+        if result.returncode != 0:
+            logger.error("Custom algorithm failed (exit %d): %s", result.returncode, result.stderr[:500])
+        else:
+            logger.info("Custom algorithm completed successfully.")
+
+        # Cleanup temp file
+        try:
+            if os.path.exists(temp_filters_path):
+                os.remove(temp_filters_path)
+        except OSError:
+            pass
+
+    except subprocess.TimeoutExpired:
+        logger.error("Custom algorithm timed out after 600 seconds.")
+    except Exception:
+        logger.exception("Custom algorithm execution error")
+    finally:
+        _set_algo_running(False)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def run_analysis(request):
+    """Start a new stock selection analysis."""
+    algo_running = _get_algo_running()
+    initial_type = _validate_profile_type(request.GET.get('type', 'balanced'))
+
+    if request.method == 'POST':
+        if algo_running:
+            messages.warning(request, "Analysis is already running! Please wait.")
+        else:
+            profile_type = _validate_profile_type(request.POST.get('portfolio_type', 'balanced'))
+            budget = _validate_budget(request.POST.get('investment_amount', 10000))
+
+            thread = threading.Thread(
+                target=_run_algo_script,
+                args=(profile_type, budget),
+                daemon=True,
+            )
+            thread.start()
+            messages.success(
+                request,
+                f"Analysis started with {profile_type.title()} profile and ${budget:,.2f} budget. "
+                f"This may take a few minutes."
+            )
+
+        return redirect('analysis-status')
+
+    return render(request, 'SmartVest/run_analysis.html', {
+        'running': algo_running,
+        'initial_type': initial_type,
+    })
+
+
+@login_required
+def select_portfolio_type(request):
+    """Choose portfolio type page."""
+    return render(request, 'SmartVest/portfolio_type_selection.html')
+
+
+@login_required
+def analysis_status(request):
+    """Display analysis progress."""
+    return render(request, 'SmartVest/analysis_status.html', {
+        'running': _get_algo_running(),
+    })
+
+
+@login_required
+def view_results(request):
+    """Display algorithm results from CSV."""
+    results_path = os.path.join(settings.BASE_DIR, 'alocare_finala_portofoliu.csv')
+    results_data = []
+
+    if os.path.exists(results_path):
+        try:
+            df = pd.read_csv(results_path)
+            df.columns = [
+                c.replace(' ', '_').replace('($)', 'USD').replace('(', '').replace(')', '')
+                for c in df.columns
+            ]
+            results_data = df.to_dict('records')
+        except Exception:
+            logger.exception("Error reading results CSV: %s", results_path)
+
+    context = {
+        'results': results_data,
+        'has_results': len(results_data) > 0,
+    }
+    return render(request, 'SmartVest/results.html', context)
+
+
+@login_required
+@require_POST
+def save_portfolio(request):
+    """Save algorithm results as a portfolio."""
+    name = _sanitize_name(request.POST.get('portfolio_name'))
+    description = request.POST.get('portfolio_description', '').strip()[:500]
+
+    if not name:
+        messages.error(request, "Portfolio name cannot be empty.")
+        return redirect('view-results')
+
+    # Load current results from CSV
+    results_path = os.path.join(settings.BASE_DIR, 'alocare_finala_portofoliu.csv')
+    portfolio_data = []
+
+    if os.path.exists(results_path):
+        try:
+            df = pd.read_csv(results_path)
+            df.columns = [
+                c.replace(' ', '_').replace('($)', 'USD').replace('(', '').replace(')', '')
+                for c in df.columns
+            ]
+            portfolio_data = df.to_dict('records')
+        except Exception:
+            logger.exception("Error reading CSV for saving")
+            messages.error(request, "Failed to read portfolio data.")
+            return redirect('view-results')
+    else:
+        messages.error(request, "No portfolio results found to save.")
+        return redirect('view-results')
+
+    if portfolio_data:
+        SavedPortfolio.objects.create(
+            user=request.user,
+            name=name,
+            description=description,
+            portfolio_data=portfolio_data,
+        )
+        logger.info("Portfolio '%s' saved by user %s", name, request.user.username)
+        messages.success(request, f"Portfolio '{name}' saved successfully!")
+        return redirect('portfolio-list')
+
+    messages.error(request, "No data to save.")
+    return redirect('view-results')
+
+
+@login_required
+def track_performance(request):
+    """Track portfolio performance with live prices."""
+    try:
+        portfolios = SavedPortfolio.objects.filter(user=request.user)
+        performance_data = get_portfolio_performance(portfolios)
+    except Exception:
+        logger.exception("Error tracking performance for user %s", request.user.username)
+        performance_data = []
+        messages.error(request, "Could not load performance data.")
+
+    return render(request, 'SmartVest/portfolio_performance.html', {
+        'performance_data': performance_data,
+    })
+
+
+# ============================================================================
+# MARKET NEWS
+# ============================================================================
+
+GNEWS_CACHE_KEY = "smartvest_gnews"
+GNEWS_CACHE_TTL = 600  # 10 minutes — news doesn't change that fast
+
+
+@login_required
+def market_news(request):
+    """Display business/finance news feed (cached for 10 min)."""
+    news_results = cache.get(GNEWS_CACHE_KEY)
+
+    if news_results is None:
+        news_results = []
+        try:
+            from gnews import GNews
+            google_news = GNews(language='en', country='US', period='1d', max_results=10)
+            raw_news = google_news.get_news_by_topic('BUSINESS')
+            news_results = [
+                {k.replace(' ', '_'): v for k, v in article.items()}
+                for article in raw_news
+            ]
+            cache.set(GNEWS_CACHE_KEY, news_results, timeout=GNEWS_CACHE_TTL)
+            logger.info("GNews fetched and cached (%d articles)", len(news_results))
+        except Exception:
+            logger.exception("Error fetching market news")
+    else:
+        logger.debug("GNews cache HIT (%d articles)", len(news_results))
+
+    return render(request, 'SmartVest/market_news.html', {'news': news_results})
+
+
+# ============================================================================
+# ADMIN DASHBOARD
+# ============================================================================
+
+@login_required
+@user_passes_test(lambda u: u.is_superuser)
+def admin_dashboard(request):
+    """Admin overview with statistics and user list.
+
+    Tier 2: Replaced N+1 per-user query with a single annotated query.
+    """
+    from django.db.models import Count
+
+    total_users = User.objects.count()
+    total_portfolios = SavedPortfolio.objects.count()
+
+    # Single query with annotation — eliminates N+1
+    users = (
+        User.objects
+        .annotate(portfolio_count=Count('savedportfolio'))
+        .order_by('-date_joined')
+    )
+
+    user_data = [
+        {'user': u, 'portfolio_count': u.portfolio_count}
+        for u in users
+    ]
+
+    context = {
+        'total_users': total_users,
+        'total_portfolios': total_portfolios,
+        'user_data': user_data,
+    }
+    return render(request, 'SmartVest/admin_dashboard.html', context)
+
+
+@login_required
+@user_passes_test(lambda u: u.is_superuser)
+def admin_user_detail(request, user_id):
+    """Admin view of a specific user's portfolios and performance."""
+    user = get_object_or_404(User, pk=user_id)
+    try:
+        portfolios = SavedPortfolio.objects.filter(user=user)
+        performance_data = get_portfolio_performance(portfolios)
+    except Exception:
+        logger.exception("Error loading admin user detail for user_id=%d", user_id)
+        performance_data = []
+
+    context = {
+        'target_user': user,
+        'performance_data': performance_data,
+    }
+    return render(request, 'SmartVest/admin_user_detail.html', context)
+
+
+# ============================================================================
+# CUSTOM FILTERS & PRESETS
+# ============================================================================
+
+@login_required
+def custom_filters(request):
+    """Page with all Finviz filter options."""
+    presets = FilterPreset.objects.filter(user=request.user)
+
+    context = {
+        'filters': FINVIZ_FILTERS,
+        'presets': presets,
+        'filters_json': json.dumps(FINVIZ_FILTERS),
+    }
+    return render(request, 'SmartVest/custom_filters.html', context)
+
+
+@login_required
+@require_POST
+def save_preset(request):
+    """Save a new filter preset via AJAX POST."""
+    try:
+        data = json.loads(request.body)
+        name = _sanitize_name(data.get('name', 'My Preset'), max_length=MAX_PRESET_NAME_LENGTH)
+        filters = data.get('filters', {})
+
+        if not name:
+            return JsonResponse({'success': False, 'message': 'Name cannot be empty.'}, status=400)
+
+        if not isinstance(filters, dict):
+            return JsonResponse({'success': False, 'message': 'Invalid filters format.'}, status=400)
+
+        preset = FilterPreset.objects.create(
+            user=request.user,
+            name=name,
+            filters=filters,
+        )
+        logger.info("Preset '%s' saved by user %s", name, request.user.username)
+        return JsonResponse({
+            'success': True,
+            'preset_id': preset.id,
+            'message': f'Preset "{name}" saved successfully!',
+        })
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'message': 'Invalid JSON data.'}, status=400)
+    except Exception:
+        logger.exception("Error saving preset")
+        return JsonResponse({'success': False, 'message': 'Server error.'}, status=500)
+
+
+@login_required
+@require_POST
+def delete_preset(request, pk):
+    """Delete a filter preset. Requires POST for safety."""
+    preset = get_object_or_404(FilterPreset, pk=pk, user=request.user)
+    preset_name = preset.name
+    preset.delete()
+    logger.info("Preset '%s' deleted by user %s", preset_name, request.user.username)
+    messages.success(request, f'Preset "{preset_name}" deleted successfully!')
+    return redirect('presets-list')
+
+
+@login_required
+def presets_list(request):
+    """List all user's filter presets."""
+    presets = FilterPreset.objects.filter(user=request.user)
+    return render(request, 'SmartVest/presets_list.html', {'presets': presets})
+
+
+@login_required
+@require_POST
+def update_preset(request, pk):
+    """Update a filter preset's name and description. Requires POST."""
+    preset = get_object_or_404(FilterPreset, pk=pk, user=request.user)
+
+    new_name = _sanitize_name(request.POST.get('name', preset.name), max_length=MAX_PRESET_NAME_LENGTH)
+    new_description = request.POST.get('description', preset.description).strip()[:500]
+
+    if new_name:
+        preset.name = new_name
+    preset.description = new_description
+    preset.save(update_fields=['name', 'description', 'updated_at'])
+    logger.info("Preset '%s' updated by user %s", preset.name, request.user.username)
+    messages.success(request, f'Preset "{preset.name}" updated successfully!')
+    return redirect('presets-list')
+
+
+@login_required
+def run_with_preset(request, pk):
+    """Run analysis with a saved preset's filters."""
+    preset = get_object_or_404(FilterPreset, pk=pk, user=request.user)
+
+    if _get_algo_running():
+        messages.warning(request, "An analysis is already running!")
+        return redirect('analysis-status')
+
+    budget = _validate_budget(request.GET.get('budget', 10000))
+
+    thread = threading.Thread(
+        target=_run_algo_script_custom,
+        args=(preset.filters, budget),
+        daemon=True,
+    )
+    thread.start()
+
+    logger.info("Analysis started with preset '%s' by user %s", preset.name, request.user.username)
+    messages.success(request, f"Analysis started with preset '{preset.name}' and budget ${budget:,.2f}.")
+    return redirect('analysis-status')
+
 
 def get_user_presets(request):
-    """Get presets for sidebar - returns as context"""
+    """Get presets for sidebar - returns as context."""
     if request.user.is_authenticated:
         return FilterPreset.objects.filter(user=request.user)[:5]
     return []
 
 
-# ==========================
+# ============================================================================
 # UNICORN SCANNER
-# ==========================
-from .models import WatchedUnicorn
-import sys
-import os
-
-# Add project root to path for importing unicorn_scanner
-sys.path.insert(0, settings.BASE_DIR)
+# ============================================================================
 
 @login_required
 def unicorn_scanner(request):
-    """Main unicorn scanner page - two-step UX with relax option"""
-    from unicorn_scanner import scan_for_unicorns
-    
+    """Main unicorn scanner page - two-step UX with relax option."""
     scan_results = []
     error_message = None
     is_scanning = False
-    show_relax_prompt = False   # Show "relax filters?" prompt
-    is_relaxed = False          # Are we showing relaxed (2/3) results?
-    has_perfect_results = False # Did we find any 3/3 stocks?
-    
+    show_relax_prompt = False
+    is_relaxed = False
+    has_perfect_results = False
+
+    # Fields we actually need in session — drop everything else to save memory
+    _UNICORN_KEEP_FIELDS = {
+        'Ticker', 'Company', 'Price', 'Sector', 'Industry',
+        'RSI', 'Volume_Ratio', 'Pct_of_52W', 'Unicorn_Score',
+    }
+
     if request.method == 'POST':
         if 'run_scan' in request.POST:
             # --- FRESH SCAN ---
             try:
+                from unicorn_scanner import scan_for_unicorns
+
                 is_scanning = True
                 df_all_scored, _ = scan_for_unicorns()
-                
+
                 if not df_all_scored.empty:
-                    all_results = df_all_scored.to_dict('records')
-                    # Store ALL scored results in session
+                    # Tier 2: Only keep essential fields to reduce session size
+                    raw_results = df_all_scored.to_dict('records')
+                    all_results = [
+                        {k: v for k, v in row.items() if k in _UNICORN_KEEP_FIELDS}
+                        for row in raw_results
+                    ]
                     request.session['unicorn_all_results'] = all_results
                     request.session.modified = True
-                    
-                    # Filter to 3/3 first
+
                     perfect = [r for r in all_results if r.get('Unicorn_Score', 0) >= 3]
-                    
+
                     if perfect:
-                        # Found 3/3 — show them and offer to relax
                         scan_results = perfect
                         has_perfect_results = True
                         show_relax_prompt = True
                     else:
-                        # No 3/3 — prompt to relax
                         strong = [r for r in all_results if r.get('Unicorn_Score', 0) >= 2]
                         if strong:
                             show_relax_prompt = True
-                            error_message = f"Nu am gasit companii cu scor perfect (3/3), dar exista {len(strong)} companii cu scor 2/3."
+                            error_message = (
+                                f"Nu am gasit companii cu scor perfect (3/3), "
+                                f"dar exista {len(strong)} companii cu scor 2/3."
+                            )
                         else:
                             error_message = "Nu s-au gasit candidati unicorn. Incearca din nou mai tarziu."
                 else:
                     error_message = "Scanarea nu a returnat rezultate. Incearca din nou mai tarziu."
-            except Exception as e:
-                error_message = f"Eroare la scanare: {str(e)}"
-                print(f"Unicorn scan error: {e}")
-        
+            except Exception:
+                logger.exception("Unicorn scan error")
+                error_message = "Eroare la scanare. Incearca din nou mai tarziu."
+
         elif 'relax_filters' in request.POST:
             # --- RELAX: show 2/3 from cached data ---
             all_results = request.session.get('unicorn_all_results', [])
             if all_results:
-                # Include both 3/3 and 2/3
                 scan_results = [r for r in all_results if r.get('Unicorn_Score', 0) >= 2]
                 is_relaxed = True
                 has_perfect_results = any(r.get('Unicorn_Score', 0) >= 3 for r in scan_results)
             else:
                 error_message = "Nu exista rezultate anterioare. Ruleaza o scanare noua."
     else:
-        # GET request — check for cached relaxed/perfect results
+        # GET request - check for cached results
         all_results = request.session.get('unicorn_all_results', [])
         if all_results:
-            # Default: show 3/3 if available, otherwise show whatever we showed last
             perfect = [r for r in all_results if r.get('Unicorn_Score', 0) >= 3]
             if perfect:
                 scan_results = perfect
@@ -694,102 +1008,17 @@ def unicorn_scanner(request):
                 strong = [r for r in all_results if r.get('Unicorn_Score', 0) >= 2]
                 if strong:
                     show_relax_prompt = True
-    
-    # Also store filtered results for watchlist add functionality
+
+    # Store filtered results for watchlist add
     if scan_results:
         request.session['unicorn_results'] = scan_results
         request.session.modified = True
-    
-    # Get user's watchlist
+
+    # Get user's watchlist with live prices
     watchlist = WatchedUnicorn.objects.filter(user=request.user)
     watched_tickers = [w.ticker for w in watchlist]
-    
-    # Fetch real-time prices for watchlist items
-    watchlist_with_pl = []
-    if watchlist:
-        tickers_to_fetch = [w.ticker for w in watchlist if w.entry_price]
-        if tickers_to_fetch:
-            try:
-                # Fetch current data from yfinance
-                price_data = yf.download(tickers_to_fetch, period='2d', progress=False)
-                
-                for w in watchlist:
-                    item = {
-                        'pk': w.pk,
-                        'ticker': w.ticker,
-                        'company_name': w.company_name,
-                        'entry_price': float(w.entry_price) if w.entry_price else None,
-                        'added_at': w.added_at,
-                        'notes': w.notes,
-                        'current_price': None,
-                        'daily_pl': None,
-                        'daily_pl_pct': None,
-                        'open_pl': None,
-                        'open_pl_pct': None,
-                    }
-                    
-                    try:
-                        if len(tickers_to_fetch) > 1:
-                            close_data = price_data['Close'][w.ticker].dropna()
-                        else:
-                            close_data = price_data['Close'].dropna()
-                        
-                        if len(close_data) >= 1:
-                            current_price = float(close_data.iloc[-1])
-                            item['current_price'] = round(current_price, 2)
-                            
-                            # Calculate Daily P/L (if we have 2 days of data)
-                            if len(close_data) >= 2:
-                                prev_close = float(close_data.iloc[-2])
-                                daily_pl = current_price - prev_close
-                                daily_pl_pct = (daily_pl / prev_close) * 100
-                                item['daily_pl'] = round(daily_pl, 2)
-                                item['daily_pl_pct'] = round(daily_pl_pct, 2)
-                            
-                            # Calculate Open P/L (since entry)
-                            if item['entry_price']:
-                                open_pl = current_price - item['entry_price']
-                                open_pl_pct = (open_pl / item['entry_price']) * 100
-                                item['open_pl'] = round(open_pl, 2)
-                                item['open_pl_pct'] = round(open_pl_pct, 2)
-                    except Exception as e:
-                        print(f"Error processing {w.ticker}: {e}")
-                    
-                    watchlist_with_pl.append(item)
-            except Exception as e:
-                print(f"Error fetching prices: {e}")
-                # Fallback to basic watchlist data
-                for w in watchlist:
-                    watchlist_with_pl.append({
-                        'pk': w.pk,
-                        'ticker': w.ticker,
-                        'company_name': w.company_name,
-                        'entry_price': float(w.entry_price) if w.entry_price else None,
-                        'added_at': w.added_at,
-                        'notes': w.notes,
-                        'current_price': None,
-                        'daily_pl': None,
-                        'daily_pl_pct': None,
-                        'open_pl': None,
-                        'open_pl_pct': None,
-                    })
-        else:
-            # No entry prices, just show basic data
-            for w in watchlist:
-                watchlist_with_pl.append({
-                    'pk': w.pk,
-                    'ticker': w.ticker,
-                    'company_name': w.company_name,
-                    'entry_price': None,
-                    'added_at': w.added_at,
-                    'notes': w.notes,
-                    'current_price': None,
-                    'daily_pl': None,
-                    'daily_pl_pct': None,
-                    'open_pl': None,
-                    'open_pl_pct': None,
-                })
-    
+    watchlist_with_pl = _build_watchlist_with_pl(watchlist)
+
     context = {
         'scan_results': scan_results,
         'watchlist': watchlist_with_pl,
@@ -803,71 +1032,120 @@ def unicorn_scanner(request):
     return render(request, 'SmartVest/unicorn_scanner.html', context)
 
 
+def _build_watchlist_with_pl(watchlist):
+    """Build watchlist data with real-time P/L calculations.
+
+    Tier 2: Uses fetch_prices_cached() so the watchlist shares the
+    same price cache as portfolio performance — no duplicate downloads.
+    """
+    watchlist_with_pl = []
+    if not watchlist:
+        return watchlist_with_pl
+
+    tickers_to_fetch = set(w.ticker for w in watchlist if w.entry_price)
+
+    # Use the shared cached price fetcher
+    current_prices, prev_closes = fetch_prices_cached(tickers_to_fetch)
+
+    for w in watchlist:
+        entry_price = float(w.entry_price) if w.entry_price else None
+        curr_price = current_prices.get(w.ticker)
+        prev_close = prev_closes.get(w.ticker)
+
+        item = {
+            'pk': w.pk,
+            'ticker': w.ticker,
+            'company_name': w.company_name,
+            'entry_price': entry_price,
+            'added_at': w.added_at,
+            'notes': w.notes,
+            'current_price': round(curr_price, 2) if curr_price else None,
+            'daily_pl': None,
+            'daily_pl_pct': None,
+            'open_pl': None,
+            'open_pl_pct': None,
+        }
+
+        if curr_price and prev_close:
+            daily_pl = curr_price - prev_close
+            item['daily_pl'] = round(daily_pl, 2)
+            item['daily_pl_pct'] = round((daily_pl / prev_close) * 100, 2) if prev_close else 0
+
+        if curr_price and entry_price and entry_price > 0:
+            open_pl = curr_price - entry_price
+            item['open_pl'] = round(open_pl, 2)
+            item['open_pl_pct'] = round((open_pl / entry_price) * 100, 2)
+
+        watchlist_with_pl.append(item)
+
+    return watchlist_with_pl
+
+
 @login_required
+@require_POST
 def add_to_watchlist(request, ticker):
-    """Add a stock to user's unicorn watchlist"""
-    if request.method == 'POST':
-        # Get cached results from session
-        scan_results = request.session.get('unicorn_results', [])
-        
-        # Find the stock info
-        stock_info = next((s for s in scan_results if s.get('Ticker') == ticker), None)
-        
-        # Check if already watched
-        if WatchedUnicorn.objects.filter(user=request.user, ticker=ticker).exists():
-            messages.warning(request, f'{ticker} is already in your watchlist!')
-        else:
-            WatchedUnicorn.objects.create(
-                user=request.user,
-                ticker=ticker,
-                company_name=stock_info.get('Company', '') if stock_info else '',
-                entry_price=stock_info.get('Price') if stock_info else None,
-            )
-            messages.success(request, f'{ticker} has been added to your watchlist! 🦄')
-    
+    """Add a stock to user's unicorn watchlist. Requires POST."""
+    # Basic ticker validation
+    ticker = str(ticker).upper().strip()[:10]
+    if not ticker.isalpha():
+        messages.error(request, "Invalid ticker symbol.")
+        return redirect('unicorn-scanner')
+
+    scan_results = request.session.get('unicorn_results', [])
+    stock_info = next((s for s in scan_results if s.get('Ticker') == ticker), None)
+
+    if WatchedUnicorn.objects.filter(user=request.user, ticker=ticker).exists():
+        messages.warning(request, f'{ticker} is already in your watchlist!')
+    else:
+        WatchedUnicorn.objects.create(
+            user=request.user,
+            ticker=ticker,
+            company_name=stock_info.get('Company', '') if stock_info else '',
+            entry_price=stock_info.get('Price') if stock_info else None,
+        )
+        logger.info("User %s added %s to watchlist", request.user.username, ticker)
+        messages.success(request, f'{ticker} has been added to your watchlist!')
+
     return redirect('unicorn-scanner')
 
 
 @login_required
+@require_POST
 def remove_from_watchlist(request, pk):
-    """Remove a stock from user's unicorn watchlist"""
+    """Remove a stock from user's unicorn watchlist. Requires POST."""
     watched = get_object_or_404(WatchedUnicorn, pk=pk, user=request.user)
     ticker = watched.ticker
     watched.delete()
+    logger.info("User %s removed %s from watchlist", request.user.username, ticker)
     messages.success(request, f'{ticker} has been removed from your watchlist.')
     return redirect('unicorn-scanner')
 
 
-# ==========================
+# ============================================================================
 # BACKTESTING (ADMIN-ONLY)
-# ==========================
-
-# Global progress tracker for backtest
-BACKTEST_PROGRESS = {
-    'percent': 0,
-    'message': 'Idle',
-    'running': False,
-    'result': None,
-}
+# ============================================================================
 
 def _backtest_progress_callback(message, percent):
-    """Called by BacktestEngine to report progress."""
-    global BACKTEST_PROGRESS
-    BACKTEST_PROGRESS['percent'] = percent
-    BACKTEST_PROGRESS['message'] = message
+    """Called by BacktestEngine to report progress (thread-safe via cache)."""
+    progress = _get_backtest_progress()
+    progress['percent'] = percent
+    progress['message'] = message
+    _set_backtest_progress(progress)
 
 
 def _run_backtest_thread(start_date, end_date, profile_type, initial_capital):
-    """Run backtest in background thread."""
-    global BACKTEST_PROGRESS
-    BACKTEST_PROGRESS['running'] = True
-    BACKTEST_PROGRESS['result'] = None
-    BACKTEST_PROGRESS['percent'] = 0
-    BACKTEST_PROGRESS['message'] = 'Initializing...'
-    
+    """Run backtest in background thread (thread-safe via cache)."""
+    progress = {
+        'running': True,
+        'result': None,
+        'percent': 0,
+        'message': 'Initializing...',
+    }
+    _set_backtest_progress(progress)
+
     try:
         from backtester import BacktestEngine
-        
+
         engine = BacktestEngine(
             start_date=start_date,
             end_date=end_date,
@@ -876,15 +1154,22 @@ def _run_backtest_thread(start_date, end_date, profile_type, initial_capital):
             rebalance_months=3,
             progress_callback=_backtest_progress_callback,
         )
-        
+
         result = engine.run()
-        BACKTEST_PROGRESS['result'] = result.to_dict()
-        BACKTEST_PROGRESS['percent'] = 100
-        BACKTEST_PROGRESS['message'] = 'Backtest finalizat!'
-        
+
+        progress = _get_backtest_progress()
+        progress['result'] = result.to_dict()
+        progress['percent'] = 100
+        progress['message'] = 'Backtest finalizat!'
+        progress['running'] = False
+        _set_backtest_progress(progress)
+
+        logger.info("Backtest completed: %s, %s to %s", profile_type, start_date, end_date)
+
     except Exception as e:
-        print(f"Backtest error: {e}")
-        BACKTEST_PROGRESS['result'] = {
+        logger.exception("Backtest error")
+        progress = _get_backtest_progress()
+        progress['result'] = {
             'metrics': {'error': str(e)},
             'profile_type': profile_type,
             'start_date': start_date,
@@ -894,87 +1179,75 @@ def _run_backtest_thread(start_date, end_date, profile_type, initial_capital):
             'benchmark_curve': {'dates': [], 'values': []},
             'snapshots': [],
         }
-        BACKTEST_PROGRESS['percent'] = 100
-        BACKTEST_PROGRESS['message'] = f'Eroare: {str(e)}'
-    finally:
-        BACKTEST_PROGRESS['running'] = False
+        progress['percent'] = 100
+        progress['message'] = f'Eroare: {str(e)}'
+        progress['running'] = False
+        _set_backtest_progress(progress)
 
 
 @login_required
 @user_passes_test(lambda u: u.is_superuser)
+@require_http_methods(["GET", "POST"])
 def backtest_view(request):
-    """Main backtesting page — admin only."""
-    global BACKTEST_PROGRESS
-    
+    """Main backtesting page - admin only."""
+    bt_progress = _get_backtest_progress()
     result = None
-    
+
     if request.method == 'POST':
-        if BACKTEST_PROGRESS.get('running'):
+        if bt_progress.get('running'):
             messages.warning(request, "A backtest is already running!")
             return redirect('backtest')
-        
-        # Parse form data
-        period_years = int(request.POST.get('period', 2))
-        profile_type = request.POST.get('profile_type', 'balanced')
+
+        # Validate inputs
         try:
-            initial_capital = float(request.POST.get('initial_capital', 10000))
-        except ValueError:
-            initial_capital = 10000.0
-        
+            period_years = int(request.POST.get('period', 2))
+            if period_years < 1 or period_years > 10:
+                period_years = 2
+        except (ValueError, TypeError):
+            period_years = 2
+
+        profile_type = _validate_profile_type(request.POST.get('profile_type', 'balanced'))
+        initial_capital = _validate_budget(request.POST.get('initial_capital', 10000))
+
         # Calculate dates
         end_date = datetime.date.today().strftime('%Y-%m-%d')
-        start_date = (datetime.date.today() - datetime.timedelta(days=period_years * 365)).strftime('%Y-%m-%d')
-        
-        # Start backtest in background
+        start_date = (
+            datetime.date.today() - datetime.timedelta(days=period_years * 365)
+        ).strftime('%Y-%m-%d')
+
         thread = threading.Thread(
             target=_run_backtest_thread,
-            args=(start_date, end_date, profile_type, initial_capital)
+            args=(start_date, end_date, profile_type, initial_capital),
+            daemon=True,
         )
-        thread.daemon = True
         thread.start()
-        
-        messages.success(request, f"Backtest started: {profile_type.title()}, {period_years}Y, ${initial_capital:,.0f}")
-        
-        # Wait for completion (with timeout)
-        import time as time_module
-        max_wait = 600  # 10 minutes max
-        waited = 0
-        while BACKTEST_PROGRESS.get('running') and waited < max_wait:
-            time_module.sleep(1)
-            waited += 1
-        
-        # Get result
-        if BACKTEST_PROGRESS.get('result'):
-            result = BACKTEST_PROGRESS['result']
-            
-            # Format allocations as percentages for display
-            if result.get('snapshots'):
-                for snap in result['snapshots']:
-                    if snap.get('allocations'):
-                        snap['allocations'] = {
-                            k: round(v * 100, 1) 
-                            for k, v in snap['allocations'].items() 
-                            if v > 0
-                        }
-    
-    elif BACKTEST_PROGRESS.get('result'):
-        # GET request — show last result if available
-        result = BACKTEST_PROGRESS['result']
+
+        logger.info(
+            "Backtest started: %s, %dY, $%.0f by superuser %s",
+            profile_type, period_years, initial_capital, request.user.username,
+        )
+        messages.success(
+            request,
+            f"Backtest started: {profile_type.title()}, {period_years}Y, ${initial_capital:,.0f}",
+        )
+        return redirect('backtest')
+
+    if bt_progress.get('result'):
+        result = bt_progress['result']
         if result.get('snapshots'):
             for snap in result['snapshots']:
                 if snap.get('allocations'):
-                    # Only format if values are in 0-1 range (not already formatted)
                     first_val = next(iter(snap['allocations'].values()), 0)
                     if first_val <= 1:
                         snap['allocations'] = {
-                            k: round(v * 100, 1) 
-                            for k, v in snap['allocations'].items() 
+                            k: round(v * 100, 1)
+                            for k, v in snap['allocations'].items()
                             if v > 0
                         }
-    
+
     context = {
         'result': result,
-        'running': BACKTEST_PROGRESS.get('running', False),
+        'running': bt_progress.get('running', False),
     }
     return render(request, 'SmartVest/backtest.html', context)
 
@@ -983,10 +1256,11 @@ def backtest_view(request):
 @user_passes_test(lambda u: u.is_superuser)
 def backtest_progress_api(request):
     """AJAX endpoint for polling backtest progress."""
+    bt_progress = _get_backtest_progress()
     return JsonResponse({
-        'percent': BACKTEST_PROGRESS.get('percent', 0),
-        'message': BACKTEST_PROGRESS.get('message', 'Idle'),
-        'running': BACKTEST_PROGRESS.get('running', False),
+        'percent': bt_progress.get('percent', 0),
+        'message': bt_progress.get('message', 'Idle'),
+        'running': bt_progress.get('running', False),
     })
 
 
@@ -994,10 +1268,13 @@ def backtest_progress_api(request):
 @user_passes_test(lambda u: u.is_superuser)
 def backtest_results(request):
     """Admin-only page showing all automated backtest results."""
-    from django.db.models import Avg, Count, Min, Max
+    from django.db.models import Avg, Count, Max, Min
 
     # Filter by profile if requested
     profile_filter = request.GET.get('profile', '')
+    if profile_filter and profile_filter not in VALID_PROFILE_TYPES:
+        profile_filter = ''
+
     runs = BacktestRun.objects.filter(status='done')
     if profile_filter:
         runs = runs.filter(profile_type=profile_filter)
@@ -1014,18 +1291,18 @@ def backtest_results(request):
         worst_return=Min('total_return'),
     )
 
-    # Win rate (return > 0)
+    # Win rate
     total_done = runs.count()
     wins = runs.filter(total_return__gt=0).count()
     win_rate = (wins / total_done * 100) if total_done > 0 else 0
 
-    # Beat SPY rate (outperformance > 0)
+    # Beat SPY rate
     beat_spy = runs.filter(outperformance__gt=0).count()
     beat_spy_rate = (beat_spy / total_done * 100) if total_done > 0 else 0
 
     # Per-profile breakdown
     profile_stats = {}
-    for p in ['conservative', 'balanced', 'aggressive']:
+    for p in VALID_PROFILE_TYPES:
         p_runs = BacktestRun.objects.filter(status='done', profile_type=p)
         p_count = p_runs.count()
         if p_count > 0:
@@ -1043,7 +1320,7 @@ def backtest_results(request):
                 'win_rate': (p_agg['wins'] / p_count * 100) if p_count > 0 else 0,
             }
 
-    # Sorting
+    # Sorting with whitelist
     sort_by = request.GET.get('sort', '-created_at')
     allowed_sorts = [
         'name', '-name', 'total_return', '-total_return',
@@ -1072,15 +1349,13 @@ def backtest_results(request):
 @login_required
 @user_passes_test(lambda u: u.is_superuser)
 def backtest_result_detail(request, pk):
-    """Detail view for a single backtest run — shows full charts and data."""
-    import json
+    """Detail view for a single backtest run."""
     run = get_object_or_404(BacktestRun, pk=pk)
 
     equity_curve = run.equity_curve_json or {}
     benchmark_curve = run.benchmark_curve_json or {}
     snapshots = run.snapshots_json or []
 
-    # Build a result dict matching the format used by backtest.html
     result = {
         'profile_type': run.profile_type,
         'start_date': str(run.start_date),
@@ -1109,7 +1384,6 @@ def backtest_result_detail(request, pk):
     context = {
         'run': run,
         'result': result,
-        # Pre-serialized JSON for safe JavaScript embedding
         'equity_dates_json': json.dumps(equity_curve.get('dates', [])),
         'equity_values_json': json.dumps(equity_curve.get('values', [])),
         'benchmark_values_json': json.dumps(benchmark_curve.get('values', [])),

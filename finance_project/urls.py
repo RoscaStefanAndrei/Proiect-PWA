@@ -19,9 +19,17 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.views.generic import TemplateView
+from django.views.static import serve as static_serve
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    # PWA: service worker and manifest must be served from root scope
+    path('sw.js', static_serve, {'document_root': settings.STATICFILES_DIRS[0], 'path': 'sw.js'},
+         name='service-worker'),
+    path('manifest.json', static_serve, {'document_root': settings.STATICFILES_DIRS[0], 'path': 'manifest.json'},
+         name='manifest'),
+    path('offline/', TemplateView.as_view(template_name='offline.html'), name='offline'),
     path('', include('SmartVest.urls')),
 ]
 

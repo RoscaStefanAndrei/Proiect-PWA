@@ -6,58 +6,54 @@
 <div class="row">
     <!-- User Info Card -->
     <div class="col-md-4 mb-4">
-        <div class="card bg-dark-card text-white border-secondary shadow-sm text-center p-4">
+        <div class="card text-center p-4">
             <div class="mb-3">
                 {% if user.userprofile.avatar %}
-                <img src="{{ user.userprofile.avatar.url }}" class="rounded-circle border border-2 border-success p-1"
-                    style="width: 120px; height: 120px; object-fit: cover;">
+                <img src="{{ user.userprofile.avatar.url }}" class="rounded-circle"
+                    style="width: 100px; height: 100px; object-fit: cover; border: 3px solid var(--accent);">
                 {% else %}
-                <div class="rounded-circle bg-secondary d-inline-flex align-items-center justify-content-center text-white fw-bold mx-auto"
-                    style="width: 120px; height: 120px; font-size: 3rem;">
+                <div class="user-avatar d-inline-flex mx-auto"
+                    style="width: 100px; height: 100px; font-size: 2.5rem; border-radius: 50%;">
                     {{ user.username|slice:":1"|upper }}
                 </div>
                 {% endif %}
             </div>
-            <h4 class="fw-bold mb-1">{{ user.username }}</h4>
-            <p class="text-secondary small mb-3">{{ user.email }}</p>
+            <h5 class="fw-bold mb-1" style="color: var(--text-primary);">{{ user.username }}</h5>
+            <p style="color: var(--text-muted); font-size: 0.85rem;" class="mb-3">{{ user.email }}</p>
             {% if user.userprofile.bio %}
-            <p class="text-light fst-italic">"{{ user.userprofile.bio }}"</p>
+            <p style="color: var(--text-secondary); font-style: italic; font-size: 0.9rem;">"{{ user.userprofile.bio }}"</p>
             {% endif %}
-            <div class="badge bg-success bg-opacity-25 text-success rounded-pill px-3 py-2 border border-success">
-                Active Account
+            <div class="badge-positive d-inline-block mx-auto px-3 py-2" style="border-radius: 8px;">
+                <i class="fas fa-check-circle me-1"></i>Active Account
             </div>
         </div>
     </div>
 
     <!-- Update Form -->
     <div class="col-md-8">
-        <div class="card bg-dark-card text-white border-secondary shadow-sm mb-4">
-            <div class="card-header bg-transparent border-bottom border-secondary py-3">
-                <h5 class="mb-0 fw-bold"><i class="fas fa-user-edit me-2"></i>Edit Information</h5>
-            </div>
+        <div class="card mb-4">
             <div class="card-body p-4">
+                <h6 class="fw-bold mb-3" style="color: var(--text-primary);">
+                    <i class="fas fa-user-edit me-2" style="color: var(--accent);"></i>Edit Information
+                </h6>
                 <form method="POST" enctype="multipart/form-data">
                     {% csrf_token %}
                     <div class="mb-3">
-                        <label class="form-label text-secondary fw-bold">Username</label>
+                        <label class="form-label">Username</label>
                         {{ u_form.username }}
-                        <!-- Add custom styling to rendered inputs via JS or widget tweaks if needed, 
-                              but for now standard django rendering will be functional though plain. -->
                     </div>
                     <div class="mb-3">
-                        <label class="form-label text-secondary fw-bold">Email</label>
+                        <label class="form-label">Email</label>
                         {{ u_form.email }}
                     </div>
-
                     <div class="mb-3">
-                        <label class="form-label text-secondary fw-bold">Avatar</label>
+                        <label class="form-label">Avatar</label>
                         {{ p_form.avatar }}
                     </div>
                     <div class="mb-3">
-                        <label class="form-label text-secondary fw-bold">Bio</label>
+                        <label class="form-label">Bio</label>
                         {{ p_form.bio }}
                     </div>
-
                     <div class="d-flex justify-content-end">
                         <button class="btn btn-primary rounded-pill px-4 fw-bold" type="submit">
                             Save Changes
@@ -67,58 +63,24 @@
             </div>
         </div>
 
-        <!-- Delete Account Section -->
-        <div class="card bg-dark-card text-white border-danger shadow-sm">
-            <div class="card-header bg-transparent border-bottom border-danger py-3">
-                <h5 class="mb-0 fw-bold text-danger"><i class="fas fa-exclamation-triangle me-2"></i>Danger Zone
-                </h5>
-            </div>
+        <!-- Danger Zone -->
+        <div class="card" style="border-color: rgba(239,68,68,0.2);">
             <div class="card-body p-4">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
-                        <h6 class="fw-bold">Delete Account</h6>
-                        <p class="text-secondary small mb-0">This action is irreversible. All your data will be
-                            permanently lost.</p>
+                        <h6 class="fw-bold" style="color: var(--red);">
+                            <i class="fas fa-exclamation-triangle me-2"></i>Delete Account
+                        </h6>
+                        <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0;">
+                            This action is irreversible. All data will be permanently lost.
+                        </p>
                     </div>
                     <a href="{% url 'delete-profile' %}" class="btn btn-outline-danger rounded-pill fw-bold">
-                        Delete Profile
+                        Delete
                     </a>
                 </div>
             </div>
         </div>
     </div>
 </div>
-
-<!-- Styling tweak for form inputs rendered by Django to match dark theme -->
-<style>
-    /* Targeting standard inputs */
-    input[type="text"],
-    input[type="email"],
-    input[type="file"],
-    textarea {
-        background-color: #131622 !important;
-        border: 1px solid #2d3246 !important;
-        color: white !important;
-        border-radius: 6px;
-        padding: 8px 12px;
-        width: 100%;
-        display: block;
-    }
-
-    input[type="text"]:focus,
-    input[type="email"]:focus,
-    textarea:focus {
-        outline: none;
-        border-color: #28a745 !important;
-        box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.25);
-    }
-
-    /* Hide current help text or make it readable */
-    .helptext {
-        font-size: 0.8em;
-        color: #6c757d;
-        display: block;
-        margin-top: 5px;
-    }
-</style>
 {% endblock %}

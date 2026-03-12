@@ -1,136 +1,145 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SmartVest - {% block title %}{% endblock %}</title>
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#3b82f6">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="SmartVest">
+    {% load static %}
+    <link rel="apple-touch-icon" href="{% static 'img/icon-192.png' %}">
+    <!-- Inter Font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    {% block extra_head %}{% endblock %}
 </head>
 
-<body class="bg-dark text-white">
+<body>
 
-    <div class="d-flex" id="wrapper">
+    <div id="wrapper">
         <!-- Sidebar -->
         {% if user.is_authenticated %}
-        <div class="bg-black border-end border-secondary sidebar-wrapper" id="sidebar-wrapper">
-            <a href="{% url 'home' %}" class="text-decoration-none">
-                <div
-                    class="sidebar-heading text-center py-4 primary-text fs-4 fw-bold text-uppercase border-bottom border-secondary mb-3 logo-link">
-                    <i class="fas fa-chart-line me-2 text-success"></i><span class="text-white">SmartVest</span>
+        <div id="sidebar-wrapper">
+            <a href="{% url 'home' %}" class="text-decoration-none logo-link">
+                <div class="sidebar-heading">
+                    <div class="logo-icon">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <span class="logo-text">SmartVest</span>
                 </div>
             </a>
-            <div class="list-group list-group-flush my-3">
-                <a href="{% url 'home' %}"
-                    class="list-group-item list-group-item-action bg-transparent text-white fw-bold mb-2 sidebar-link">
-                    <i class="fas fa-tachometer-alt me-3"></i>Dashboard
+
+            <div class="sidebar-nav">
+                <div class="sidebar-section-label">Menu</div>
+                <a href="{% url 'home' %}" class="sidebar-link {% if request.resolver_match.url_name == 'home' %}active{% endif %}">
+                    <i class="fas fa-th-large"></i>Dashboard
                 </a>
-                <a href="{% url 'portfolio-list' %}"
-                    class="list-group-item list-group-item-action bg-transparent text-white fw-bold mb-2 sidebar-link">
-                    <i class="fas fa-wallet me-3"></i>Portfolios
+                <a href="{% url 'portfolio-list' %}" class="sidebar-link {% if request.resolver_match.url_name == 'portfolio-list' %}active{% endif %}">
+                    <i class="fas fa-wallet"></i>Portfolios
                 </a>
-                <a href="{% url 'market-news' %}"
-                    class="list-group-item list-group-item-action bg-transparent text-white fw-bold mb-2 sidebar-link">
-                    <i class="fas fa-newspaper me-3"></i>News
+                <a href="{% url 'market-news' %}" class="sidebar-link {% if request.resolver_match.url_name == 'market-news' %}active{% endif %}">
+                    <i class="fas fa-newspaper"></i>News
                 </a>
-                <a href="{% url 'run-analysis' %}"
-                    class="list-group-item list-group-item-action bg-transparent text-white fw-bold mb-2 sidebar-link">
-                    <i class="fas fa-search-dollar me-3"></i>New Analysis
+                <a href="{% url 'run-analysis' %}" class="sidebar-link {% if request.resolver_match.url_name == 'run-analysis' %}active{% endif %}">
+                    <i class="fas fa-search-dollar"></i>New Analysis
                 </a>
-                <a href="{% url 'unicorn-scanner' %}"
-                    class="list-group-item list-group-item-action bg-transparent text-white fw-bold mb-2 sidebar-link">
-                    <i class="fas fa-horse-head me-3"></i>Unicorns 🦄
+
+                <div class="sidebar-section-label">Tools</div>
+                <a href="{% url 'unicorn-scanner' %}" class="sidebar-link {% if request.resolver_match.url_name == 'unicorn-scanner' %}active{% endif %}">
+                    <i class="fas fa-horse-head"></i>Unicorn Scanner
                 </a>
-                <a href="{% url 'presets-list' %}"
-                    class="list-group-item list-group-item-action bg-transparent text-white fw-bold mb-2 sidebar-link">
-                    <i class="fas fa-bookmark me-3"></i>Saved Presets
+                <a href="{% url 'presets-list' %}" class="sidebar-link {% if request.resolver_match.url_name == 'presets-list' %}active{% endif %}">
+                    <i class="fas fa-bookmark"></i>Saved Presets
                 </a>
+
                 {% if user.is_superuser %}
-                <a href="{% url 'admin-dashboard' %}"
-                    class="list-group-item list-group-item-action bg-transparent text-white fw-bold mb-2 sidebar-link">
-                    <i class="fas fa-user-shield me-3"></i>Admin Panel
+                <div class="sidebar-section-label">Admin</div>
+                <a href="{% url 'admin-dashboard' %}" class="sidebar-link {% if request.resolver_match.url_name == 'admin-dashboard' %}active{% endif %}">
+                    <i class="fas fa-user-shield"></i>Admin Panel
                 </a>
-                <a href="{% url 'backtest' %}"
-                    class="list-group-item list-group-item-action bg-transparent text-white fw-bold mb-2 sidebar-link">
-                    <i class="fas fa-flask me-3"></i>Backtesting
+                <a href="{% url 'backtest' %}" class="sidebar-link {% if request.resolver_match.url_name == 'backtest' %}active{% endif %}">
+                    <i class="fas fa-flask"></i>Backtesting
                 </a>
-                <a href="{% url 'backtest-results' %}"
-                    class="list-group-item list-group-item-action bg-transparent text-white fw-bold mb-2 sidebar-link">
-                    <i class="fas fa-chart-bar me-3"></i>Backtest Results
+                <a href="{% url 'backtest-results' %}" class="sidebar-link {% if request.resolver_match.url_name == 'backtest-results' %}active{% endif %}">
+                    <i class="fas fa-chart-bar"></i>Backtest Results
                 </a>
                 {% endif %}
             </div>
 
-            <div class="mt-auto p-3 border-top border-secondary">
+            <div class="sidebar-bottom">
+                <button class="theme-toggle" id="themeToggle" type="button">
+                    <i class="fas fa-moon" id="themeIcon"></i>
+                    <span id="themeLabel">Light Mode</span>
+                </button>
                 <form action="{% url 'logout' %}" method="post">
                     {% csrf_token %}
-                    <button type="submit" class="btn btn-outline-danger w-100 border-0 text-start">
-                        <i class="fas fa-sign-out-alt me-3"></i>Logout
+                    <button type="submit" class="btn-logout">
+                        <i class="fas fa-sign-out-alt"></i>Logout
                     </button>
                 </form>
             </div>
         </div>
+
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
         {% endif %}
-        <!-- /#sidebar-wrapper -->
 
         <!-- Page Content -->
-        <div id="page-content-wrapper" class="w-100">
+        <div id="page-content-wrapper">
             <!-- Top Navigation -->
-            <nav class="navbar navbar-expand-lg navbar-dark bg-transparent py-4 px-4">
-                <div class="d-flex align-items-center">
-                    <h2 class="fs-2 m-0 text-white fw-bold">{% block header_title %}Main Menu{% endblock %}</h2>
+            {% if user.is_authenticated %}
+            <div class="top-navbar">
+                <div class="d-flex align-items-center gap-3">
+                    <button class="btn btn-link d-lg-none p-0 fs-5" id="menu-toggle" type="button"
+                            style="color: var(--text-secondary);">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                    <h1 class="page-title">{% block header_title %}Dashboard{% endblock %}</h1>
                 </div>
 
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
-                    data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent"
-                    aria-expanded="false" aria-label="Toggle navigation">
-                    <span class="navbar-toggler-icon"></span>
-                </button>
-
-                <div class="collapse navbar-collapse" id="navbarSupportedContent">
-                    <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
-                        <li class="nav-item">
-                            <a href="{% url 'profile' %}" class="text-decoration-none">
-                                <div
-                                    class="d-flex align-items-center text-white bg-dark-card rounded-pill px-3 py-2 ms-3 border border-secondary component-bg">
-                                    {% if user.is_authenticated %}
-                                    <div class="me-3 text-end d-none d-md-block">
-                                        <span class="d-block fw-bold text-white">{{ user.username }}</span>
-                                        <span class="d-block small text-muted">Personal • USD</span>
-                                    </div>
-                                    {% if user.userprofile.avatar %}
-                                    <img src="{{ user.userprofile.avatar.url }}"
-                                        class="rounded-circle border border-2 border-success"
-                                        style="width: 40px; height: 40px; object-fit: cover;">
-                                    {% else %}
-                                    <div class="rounded-circle bg-secondary d-flex justify-content-center align-items-center text-white fw-bold"
-                                        style="width: 40px; height: 40px;">
-                                        {{ user.username|slice:":1"|upper }}
-                                    </div>
-                                    {% endif %}
-                                    {% else %}
-                                    <a href="{% url 'login' %}"
-                                        class="btn btn-sm btn-success rounded-pill px-4">Login</a>
-                                    {% endif %}
-                                </div>
-                            </a>
-                        </li>
-                    </ul>
+                <a href="{% url 'profile' %}" class="user-pill text-decoration-none">
+                    <div class="text-end d-none d-md-block">
+                        <span class="user-pill-name d-block">{{ user.username }}</span>
+                        <span class="user-pill-label">Personal</span>
+                    </div>
+                    {% if user.userprofile.avatar %}
+                    <div class="user-avatar">
+                        <img src="{{ user.userprofile.avatar.url }}" alt="{{ user.username }}">
+                    </div>
+                    {% else %}
+                    <div class="user-avatar">
+                        {{ user.username|slice:":1"|upper }}
+                    </div>
+                    {% endif %}
+                </a>
+            </div>
+            {% else %}
+            <nav class="py-4 px-4" style="border-bottom: 1px solid var(--border-color);">
+                <div class="d-flex align-items-center">
+                    <h2 class="page-title">{% block header_title_anon %}{% endblock %}</h2>
                 </div>
             </nav>
+            {% endif %}
 
-            <div class="container-fluid px-4 pb-5">
+            <div class="container-fluid px-4 pb-5 {% if user.is_authenticated %}pt-4{% endif %}">
                 <!-- Messages -->
                 {% if messages %}
                 <div class="row mb-3">
-                    <div class="col-md-10 mx-auto">
+                    <div class="col-lg-10 mx-auto">
                         {% for message in messages %}
-                        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                        <div class="alert alert-dismissible fade show" role="alert"
+                             style="background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-primary);">
                             {{ message }}
                             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                         </div>
@@ -143,20 +152,69 @@
             </div>
         </div>
     </div>
-    <!-- /#wrapper -->
 
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        var el = document.getElementById("wrapper");
-        var toggleButton = document.getElementById("menu-toggle");
+        // Sidebar toggle for mobile
+        const toggleButton = document.getElementById("menu-toggle");
+        const sidebar = document.getElementById("sidebar-wrapper");
+        const overlay = document.getElementById("sidebarOverlay");
 
-        if (toggleButton) {
-            toggleButton.onclick = function () {
-                el.classList.toggle("toggled");
-            };
+        if (toggleButton && sidebar) {
+            toggleButton.addEventListener('click', function () {
+                sidebar.classList.toggle("show");
+                if (overlay) overlay.classList.toggle("show");
+            });
+        }
+
+        if (overlay) {
+            overlay.addEventListener('click', function () {
+                sidebar.classList.remove("show");
+                overlay.classList.remove("show");
+            });
+        }
+
+        // Theme toggle
+        const themeToggle = document.getElementById('themeToggle');
+        const themeIcon = document.getElementById('themeIcon');
+        const themeLabel = document.getElementById('themeLabel');
+        const html = document.documentElement;
+
+        // Load saved theme
+        const savedTheme = localStorage.getItem('sv-theme') || 'dark';
+        html.setAttribute('data-theme', savedTheme);
+        updateThemeUI(savedTheme);
+
+        if (themeToggle) {
+            themeToggle.addEventListener('click', function () {
+                const current = html.getAttribute('data-theme');
+                const next = current === 'dark' ? 'light' : 'dark';
+                html.setAttribute('data-theme', next);
+                localStorage.setItem('sv-theme', next);
+                updateThemeUI(next);
+            });
+        }
+
+        function updateThemeUI(theme) {
+            if (!themeIcon || !themeLabel) return;
+            if (theme === 'dark') {
+                themeIcon.className = 'fas fa-moon';
+                themeLabel.textContent = 'Light Mode';
+            } else {
+                themeIcon.className = 'fas fa-sun';
+                themeLabel.textContent = 'Dark Mode';
+            }
+        }
+
+        // PWA Service Worker registration
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js').catch(function(err) {
+                console.log('SW registration failed:', err);
+            });
         }
     </script>
+    {% block extra_js %}{% endblock %}
 </body>
 
 </html>

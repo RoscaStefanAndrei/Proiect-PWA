@@ -7,11 +7,11 @@
 {% block content %}
 <style>
     .analysis-hero {
-        background: linear-gradient(135deg, rgba(40, 167, 69, 0.15) 0%, rgba(0, 123, 255, 0.1) 100%);
-        border-radius: 20px;
+        background: var(--bg-card);
+        border-radius: 16px;
         padding: 2rem 2.5rem;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        backdrop-filter: blur(10px);
+        border: 1px solid var(--border-color);
+        box-shadow: var(--shadow-sm);
     }
 
     .analysis-header {
@@ -22,28 +22,15 @@
     }
 
     .analysis-icon {
-        width: 60px;
-        height: 60px;
-        min-width: 60px;
-        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-        border-radius: 16px;
+        width: 52px;
+        height: 52px;
+        min-width: 52px;
+        background: linear-gradient(135deg, #3b82f6, #06b6d4);
+        border-radius: 14px;
         display: flex;
         align-items: center;
         justify-content: center;
-        box-shadow: 0 8px 20px rgba(40, 167, 69, 0.3);
-        animation: pulse-glow 2s infinite;
-    }
-
-    @keyframes pulse-glow {
-
-        0%,
-        100% {
-            box-shadow: 0 8px 20px rgba(40, 167, 69, 0.3);
-        }
-
-        50% {
-            box-shadow: 0 8px 30px rgba(40, 167, 69, 0.5);
-        }
+        box-shadow: 0 6px 16px rgba(59,130,246,0.25);
     }
 
     .analysis-icon i {
@@ -55,12 +42,12 @@
         display: inline-flex;
         align-items: center;
         background: rgba(255, 255, 255, 0.05);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        border: 1px solid var(--border-color);
         border-radius: 50px;
         padding: 0.35rem 0.75rem;
         margin: 0.2rem;
         font-size: 0.8rem;
-        color: var(--text-secondary);
+        color: var(--text-muted);
         transition: all 0.3s ease;
     }
 
@@ -84,15 +71,15 @@
     }
 
     .investment-input-wrapper {
-        background: rgba(0, 0, 0, 0.3);
+        background: var(--bg-input);
         border-radius: 14px;
         padding: 1rem 1.25rem;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        border: 1px solid var(--border-color);
     }
 
     .investment-input-wrapper .form-control {
         background: rgba(255, 255, 255, 0.05);
-        border: 2px solid rgba(255, 255, 255, 0.1);
+        border: 2px solid var(--border-color);
         border-radius: 10px;
         color: white;
         font-size: 1.25rem;
@@ -110,10 +97,10 @@
     }
 
     .strategy-selector {
-        background: rgba(0, 0, 0, 0.3);
+        background: var(--bg-input);
         border-radius: 14px;
         padding: 1rem 1.25rem;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        border: 1px solid var(--border-color);
         position: relative;
     }
 
@@ -159,7 +146,7 @@
 
     .strategy-info .strategy-label {
         font-size: 0.75rem;
-        color: var(--text-secondary);
+        color: var(--text-muted);
         margin-bottom: 0.15rem;
     }
 
@@ -170,7 +157,7 @@
     }
 
     .btn-change-strategy {
-        background: rgba(255, 255, 255, 0.1);
+        background: var(--border-color);
         border: 1px solid rgba(255, 255, 255, 0.2);
         border-radius: 8px;
         padding: 0.5rem 0.75rem;
@@ -193,7 +180,7 @@
         bottom: 100%;
         left: 0;
         right: 0;
-        background: #1a1f2e;
+        background: var(--bg-card);
         border: 1px solid rgba(255, 255, 255, 0.15);
         border-radius: 14px;
         padding: 0.5rem;
@@ -228,7 +215,7 @@
     }
 
     .strategy-option:hover {
-        background: rgba(255, 255, 255, 0.1);
+        background: var(--border-color);
     }
 
     .strategy-option.selected {
@@ -297,7 +284,7 @@
     }
 
     .btn-start-analysis {
-        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        background: linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%);
         border: none;
         border-radius: 12px;
         padding: 0.85rem 2.5rem;

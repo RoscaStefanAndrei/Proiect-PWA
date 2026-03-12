@@ -1,281 +1,160 @@
 {% extends 'base.html' %}
 
 {% block title %}Saved Presets{% endblock %}
-
 {% block header_title %}Saved Presets{% endblock %}
 
 {% block content %}
 <style>
-    .presets-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 1.5rem;
-    }
-
-    .btn-new-preset {
-        background: linear-gradient(135deg, #6c5ce7 0%, #a29bfe 100%);
-        border: none;
-        padding: 0.6rem 1.25rem;
-        border-radius: 10px;
-        font-weight: 600;
-        color: white;
-        text-decoration: none;
-        transition: all 0.3s ease;
-    }
-
-    .btn-new-preset:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(108, 92, 231, 0.4);
-        color: white;
-    }
-
-    .presets-grid {
-        display: grid;
-        gap: 1rem;
-    }
-
     .preset-card {
-        background: rgba(0, 0, 0, 0.3);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
         border-radius: 14px;
         padding: 1.25rem;
-        transition: all 0.3s ease;
+        transition: all 0.2s ease;
+        margin-bottom: 1rem;
     }
-
     .preset-card:hover {
-        border-color: rgba(40, 167, 69, 0.3);
-        background: rgba(0, 0, 0, 0.4);
+        border-color: var(--border-hover);
+        box-shadow: var(--shadow-md);
     }
-
-    .preset-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        margin-bottom: 1rem;
-    }
-
-    .preset-info {
-        flex: 1;
-    }
-
-    .preset-name {
-        font-size: 1.1rem;
-        font-weight: 600;
-        margin-bottom: 0.25rem;
-    }
-
-    .preset-date {
-        font-size: 0.8rem;
-        color: var(--text-secondary);
-    }
-
-    .preset-actions {
-        display: flex;
-        gap: 0.5rem;
-    }
-
-    .preset-actions .btn {
-        padding: 0.4rem 0.6rem;
-        font-size: 0.85rem;
-    }
-
-    .preset-description {
-        background: rgba(255, 255, 255, 0.03);
-        border-radius: 8px;
-        padding: 0.75rem;
-        margin-bottom: 1rem;
-        min-height: 50px;
-    }
-
-    .preset-description textarea {
-        width: 100%;
-        background: transparent;
-        border: none;
-        color: var(--text-secondary);
-        font-size: 0.85rem;
-        resize: none;
-        outline: none;
-    }
-
-    .preset-description textarea:focus {
-        color: white;
-    }
-
-    .preset-filters {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.4rem;
-        margin-bottom: 1rem;
-    }
-
-    .filter-tag {
-        background: rgba(40, 167, 69, 0.15);
-        border: 1px solid rgba(40, 167, 69, 0.2);
-        border-radius: 6px;
-        padding: 0.25rem 0.5rem;
-        font-size: 0.75rem;
-        color: #28a745;
-    }
-
-    .preset-footer {
-        display: flex;
-        gap: 0.75rem;
-        padding-top: 1rem;
-        border-top: 1px solid rgba(255, 255, 255, 0.05);
-    }
-
-    .btn-run-preset {
-        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-        border: none;
-        padding: 0.5rem 1.25rem;
-        border-radius: 8px;
-        font-weight: 600;
-        color: white;
-        text-decoration: none;
-        transition: all 0.3s ease;
-        font-size: 0.9rem;
-    }
-
-    .btn-run-preset:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 4px 15px rgba(40, 167, 69, 0.4);
-        color: white;
-    }
-
-    .btn-save-preset {
-        background: rgba(108, 92, 231, 0.2);
-        border: 1px solid rgba(108, 92, 231, 0.3);
-        padding: 0.5rem 1rem;
-        border-radius: 8px;
-        font-weight: 500;
-        color: #a29bfe;
-        transition: all 0.3s ease;
-        font-size: 0.9rem;
-    }
-
-    .btn-save-preset:hover {
-        background: rgba(108, 92, 231, 0.3);
-        color: #a29bfe;
-    }
-
-    .btn-delete-preset {
-        background: rgba(220, 53, 69, 0.1);
-        border: 1px solid rgba(220, 53, 69, 0.2);
-        padding: 0.5rem 0.75rem;
-        border-radius: 8px;
-        color: #dc3545;
-        transition: all 0.3s ease;
-        font-size: 0.9rem;
-    }
-
-    .btn-delete-preset:hover {
-        background: rgba(220, 53, 69, 0.2);
-        color: #ff6b6b;
-    }
-
-    .empty-state {
-        text-align: center;
-        padding: 3rem;
-        background: rgba(0, 0, 0, 0.2);
-        border-radius: 14px;
-        border: 1px dashed rgba(255, 255, 255, 0.1);
-    }
-
-    .empty-state i {
-        font-size: 3rem;
-        color: var(--text-secondary);
-        opacity: 0.5;
-        margin-bottom: 1rem;
-    }
-
-    .empty-state h4 {
-        margin-bottom: 0.5rem;
-    }
-
-    .empty-state p {
-        color: var(--text-secondary);
-        margin-bottom: 1.5rem;
-    }
-
     .preset-name-input {
         background: transparent;
         border: none;
-        color: white;
-        font-size: 1.1rem;
+        color: var(--text-primary);
+        font-size: 1.05rem;
         font-weight: 600;
         width: 100%;
         padding: 0;
     }
-
     .preset-name-input:focus {
         outline: none;
-        border-bottom: 1px solid #28a745;
+        border-bottom: 2px solid var(--accent);
     }
+    .preset-description textarea {
+        width: 100%;
+        background: var(--bg-input);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        color: var(--text-secondary);
+        font-size: 0.85rem;
+        resize: none;
+        padding: 0.5rem 0.75rem;
+    }
+    .preset-description textarea:focus {
+        outline: none;
+        border-color: var(--accent);
+        color: var(--text-primary);
+    }
+    .filter-tag {
+        background: var(--green-subtle);
+        border: 1px solid rgba(16,185,129,0.2);
+        border-radius: 6px;
+        padding: 0.2rem 0.5rem;
+        font-size: 0.72rem;
+        color: var(--green);
+        font-weight: 500;
+    }
+    .btn-run-preset {
+        background: var(--green);
+        border: none;
+        padding: 0.45rem 1rem;
+        border-radius: 8px;
+        font-weight: 600;
+        color: white;
+        text-decoration: none;
+        font-size: 0.85rem;
+        transition: all 0.2s;
+    }
+    .btn-run-preset:hover { opacity: 0.9; color: white; }
+    .btn-save-preset {
+        background: var(--accent-subtle);
+        border: 1px solid rgba(59,130,246,0.2);
+        padding: 0.45rem 0.85rem;
+        border-radius: 8px;
+        font-weight: 500;
+        color: var(--accent);
+        font-size: 0.85rem;
+        transition: all 0.2s;
+    }
+    .btn-save-preset:hover { background: rgba(59,130,246,0.15); color: var(--accent); }
+    .btn-delete-preset {
+        background: var(--red-subtle);
+        border: 1px solid rgba(239,68,68,0.2);
+        padding: 0.45rem 0.65rem;
+        border-radius: 8px;
+        color: var(--red);
+        font-size: 0.85rem;
+        transition: all 0.2s;
+    }
+    .btn-delete-preset:hover { background: rgba(239,68,68,0.15); color: var(--red); }
 </style>
 
-<div class="presets-header">
+<div class="d-flex justify-content-between align-items-center mb-4">
     <div>
-        <h4 class="fw-bold mb-1">Manage Presets</h4>
-        <p class="text-muted mb-0 small">Edit, run, or delete your filter presets</p>
+        <p style="color: var(--text-muted); font-size: 0.88rem; margin: 0;">Edit, run, or delete your filter presets</p>
     </div>
-    <a href="{% url 'custom-filters' %}" class="btn-new-preset">
-        <i class="fas fa-plus me-2"></i>Create New Preset
+    <a href="{% url 'custom-filters' %}" class="btn btn-primary rounded-pill px-3 fw-bold" style="font-size: 0.88rem;">
+        <i class="fas fa-plus me-2"></i>New Preset
     </a>
 </div>
 
 {% if presets %}
-<div class="presets-grid">
-    {% for preset in presets %}
-    <form action="{% url 'update-preset' preset.pk %}" method="POST" class="preset-card">
-        {% csrf_token %}
-        <div class="preset-header">
-            <div class="preset-info">
-                <input type="text" name="name" class="preset-name-input" value="{{ preset.name }}" required>
-                <div class="preset-date">
-                    <i class="far fa-calendar-alt me-1"></i>Created on {{ preset.created_at|date:"d M Y, H:i" }}
-                    {% if preset.updated_at != preset.created_at %}
-                    · <i class="far fa-edit me-1"></i>Modified {{ preset.updated_at|date:"d M Y" }}
-                    {% endif %}
-                </div>
+{% for preset in presets %}
+<form action="{% url 'update-preset' preset.pk %}" method="POST" class="preset-card">
+    {% csrf_token %}
+    <div class="d-flex justify-content-between align-items-start mb-2">
+        <div class="flex-grow-1">
+            <input type="text" name="name" class="preset-name-input" value="{{ preset.name }}" required>
+            <div style="color: var(--text-muted); font-size: 0.75rem; margin-top: 0.25rem;">
+                <i class="far fa-calendar-alt me-1"></i>{{ preset.created_at|date:"d M Y, H:i" }}
+                {% if preset.updated_at != preset.created_at %}
+                 &middot; Modified {{ preset.updated_at|date:"d M Y" }}
+                {% endif %}
             </div>
         </div>
+    </div>
 
-        <div class="preset-description">
-            <textarea name="description" rows="2"
-                placeholder="Add a description for this preset...">{{ preset.description }}</textarea>
-        </div>
+    <div class="preset-description mb-2">
+        <textarea name="description" rows="2"
+            placeholder="Add a description...">{{ preset.description }}</textarea>
+    </div>
 
-        <div class="preset-filters">
-            {% for key, value in preset.filters.items %}
-            <span class="filter-tag">{{ key }}: {{ value }}</span>
-            {% empty %}
-            <span class="text-muted small">No filters defined</span>
-            {% endfor %}
-        </div>
+    <div class="d-flex flex-wrap gap-1 mb-3">
+        {% for key, value in preset.filters.items %}
+        <span class="filter-tag">{{ key }}: {{ value }}</span>
+        {% empty %}
+        <span style="color: var(--text-muted); font-size: 0.82rem;">No filters defined</span>
+        {% endfor %}
+    </div>
 
-        <div class="preset-footer">
-            <a href="{% url 'run-with-preset' preset.pk %}?budget=10000" class="btn-run-preset">
-                <i class="fas fa-play me-2"></i>Run
-            </a>
-            <button type="submit" class="btn-save-preset">
-                <i class="fas fa-save me-2"></i>Save
-            </button>
-            <a href="{% url 'delete-preset' preset.pk %}" class="btn-delete-preset ms-auto"
-                onclick="return confirm('Are you sure you want to delete this preset?');">
+    <div class="d-flex gap-2 align-items-center pt-2" style="border-top: 1px solid var(--border-color);">
+        <a href="{% url 'run-with-preset' preset.pk %}?budget=10000" class="btn-run-preset">
+            <i class="fas fa-play me-1"></i>Run
+        </a>
+        <button type="submit" class="btn-save-preset">
+            <i class="fas fa-save me-1"></i>Save
+        </button>
+        <form method="post" action="{% url 'delete-preset' preset.pk %}" class="d-inline ms-auto"
+              onsubmit="return confirm('Delete this preset?');">
+            {% csrf_token %}
+            <button type="submit" class="btn-delete-preset">
                 <i class="fas fa-trash"></i>
-            </a>
-        </div>
-    </form>
-    {% endfor %}
-</div>
+            </button>
+        </form>
+    </div>
+</form>
+{% endfor %}
 {% else %}
 <div class="empty-state">
-    <i class="fas fa-bookmark"></i>
-    <h4 class="text-white">No Saved Presets</h4>
-    <p>Create a custom preset with your favorite filters for quick analysis</p>
-    <a href="{% url 'custom-filters' %}" class="btn-new-preset">
-        <i class="fas fa-plus me-2"></i>Create First Preset
+    <div class="empty-state-icon">
+        <i class="fas fa-bookmark"></i>
+    </div>
+    <h4 class="fw-bold mb-2" style="color: var(--text-primary);">No Saved Presets</h4>
+    <p style="color: var(--text-secondary); max-width: 360px; margin: 0 auto 1.5rem;">
+        Create custom presets with your favorite filters for quick analysis.
+    </p>
+    <a href="{% url 'custom-filters' %}" class="btn btn-primary rounded-pill px-4 fw-bold">
+        <i class="fas fa-plus me-2"></i>Create Preset
     </a>
 </div>
 {% endif %}

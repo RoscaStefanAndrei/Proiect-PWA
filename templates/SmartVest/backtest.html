@@ -561,6 +561,14 @@
             pollInterval = setInterval(pollProgress, 1500);
         });
 
+        // Resume polling if a backtest is already running (e.g. page reload)
+        {% if running %}
+        progressContainer.classList.add('active');
+        runBtn.disabled = true;
+        runBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Running...';
+        pollInterval = setInterval(pollProgress, 1500);
+        {% endif %}
+
         function pollProgress() {
             fetch('{% url "backtest-progress" %}')
                 .then(response => response.json())
@@ -569,7 +577,8 @@
 
                     if (data.percent >= 100) {
                         clearInterval(pollInterval);
-                        // Page will reload with results from the form POST
+                        // Reload page to display results
+                        window.location.href = '{% url "backtest" %}';
                     }
                 })
                 .catch(err => {

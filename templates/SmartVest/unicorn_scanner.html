@@ -1,52 +1,47 @@
 {% extends 'base.html' %}
 
 {% block title %}Unicorn Scanner{% endblock %}
-{% block header_title %}🦄 Unicorn Scanner{% endblock %}
+{% block header_title %}Unicorn Scanner{% endblock %}
 
 {% block content %}
 <div class="row">
     <!-- Main Content -->
     <div class="col-lg-8">
-        <!-- Scan Control Card -->
-        <div class="card bg-dark border-secondary mb-4">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h5 class="card-title text-white mb-1">
-                            <i class="fas fa-search text-info me-2"></i>Unicorn Scanner
-                        </h5>
-                        <p class="text-muted small mb-0">
-                            Find stocks with 20-30% growth potential in 3-6 months
-                        </p>
-                    </div>
-                    <form method="post">
-                        {% csrf_token %}
-                        <button type="submit" name="run_scan" class="btn btn-primary btn-lg">
-                            <i class="fas fa-rocket me-2"></i>Run Scan
-                        </button>
-                    </form>
+        <!-- Scan Control -->
+        <div class="stat-card mb-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h6 class="fw-bold mb-1" style="color: var(--text-primary);">
+                        <i class="fas fa-search me-2" style="color: var(--accent);"></i>Unicorn Scanner
+                    </h6>
+                    <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0;">
+                        Find stocks with 20-30% growth potential in 3-6 months
+                    </p>
                 </div>
+                <form method="post">
+                    {% csrf_token %}
+                    <button type="submit" name="run_scan" class="btn btn-primary px-4">
+                        <i class="fas fa-rocket me-2"></i>Run Scan
+                    </button>
+                </form>
             </div>
         </div>
 
-        <!-- Error Message -->
         {% if error_message %}
-        <div class="alert alert-warning alert-dismissible fade show" role="alert">
+        <div class="alert mb-4" style="background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.2); color: var(--yellow);">
             <i class="fas fa-exclamation-triangle me-2"></i>{{ error_message }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
         {% endif %}
 
-        <!-- Relax Filters Prompt -->
         {% if show_relax_prompt and not scan_results %}
-        <div class="card bg-dark border-info mb-4">
-            <div class="card-body text-center py-4">
-                <i class="fas fa-filter fa-2x text-info mb-3"></i>
-                <h5 class="text-white">Want to relax the filters?</h5>
-                <p class="text-muted">There are companies that passed 2 out of 3 unicorn technical criteria.</p>
+        <div class="card mb-4 text-center" style="border-color: rgba(59,130,246,0.2);">
+            <div class="card-body py-4">
+                <i class="fas fa-filter fa-2x mb-3" style="color: var(--accent);"></i>
+                <h6 class="fw-bold" style="color: var(--text-primary);">Relax the filters?</h6>
+                <p style="color: var(--text-muted); font-size: 0.88rem;">Companies passed 2 out of 3 unicorn criteria.</p>
                 <form method="post" class="d-inline">
                     {% csrf_token %}
-                    <button type="submit" name="relax_filters" class="btn btn-info btn-lg">
+                    <button type="submit" name="relax_filters" class="btn btn-primary px-4">
                         <i class="fas fa-expand-arrows-alt me-2"></i>Relax Filters (2/3)
                     </button>
                 </form>
@@ -54,95 +49,84 @@
         </div>
         {% endif %}
 
-        <!-- Results Table -->
         {% if scan_results %}
-        <div class="card bg-dark border-secondary">
-            <div class="card-header bg-dark border-secondary d-flex justify-content-between align-items-center">
-                <h5 class="mb-0 text-white">
-                    <i class="fas fa-chart-line text-success me-2"></i>
-                    Unicorn Candidates ({{ scan_results|length }} found)
-                    {% if is_relaxed %}
-                    <span class="badge bg-info ms-2">Relaxed Filters (2/3)</span>
-                    {% elif has_perfect_results %}
-                    <span class="badge bg-warning text-dark ms-2">Scor Perfect (3/3)</span>
-                    {% endif %}
-                </h5>
-                {% if show_relax_prompt and has_perfect_results and not is_relaxed %}
-                <form method="post" class="d-inline">
-                    {% csrf_token %}
-                    <button type="submit" name="relax_filters" class="btn btn-sm btn-outline-info">
-                        <i class="fas fa-expand-arrows-alt me-1"></i>Include 2/3
-                    </button>
-                </form>
-                {% endif %}
-            </div>
+        <div class="card">
             <div class="card-body p-0">
+                <div class="px-3 py-3 d-flex justify-content-between align-items-center" style="border-bottom: 1px solid var(--border-color);">
+                    <h6 class="mb-0 fw-bold" style="color: var(--text-primary);">
+                        Candidates ({{ scan_results|length }})
+                        {% if is_relaxed %}
+                        <span class="badge ms-2" style="background: var(--accent-subtle); color: var(--accent);">Relaxed 2/3</span>
+                        {% elif has_perfect_results %}
+                        <span class="badge ms-2" style="background: rgba(245,158,11,0.15); color: var(--yellow);">Perfect 3/3</span>
+                        {% endif %}
+                    </h6>
+                    {% if show_relax_prompt and has_perfect_results and not is_relaxed %}
+                    <form method="post" class="d-inline">
+                        {% csrf_token %}
+                        <button type="submit" name="relax_filters" class="btn btn-sm btn-outline-primary">
+                            <i class="fas fa-expand-arrows-alt me-1"></i>Include 2/3
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
                 <div class="table-responsive">
                     <table class="table table-dark table-hover mb-0">
                         <thead>
                             <tr>
                                 <th>Ticker</th>
                                 <th>Company</th>
-                                <th>Price ($)</th>
+                                <th>Price</th>
                                 <th>RSI</th>
                                 <th>Vol. Ratio</th>
-                                <th>% din 52W High</th>
-                                <th>Scor</th>
-                                <th>Action</th>
+                                <th>% of 52W High</th>
+                                <th>Score</th>
+                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for stock in scan_results %}
                             <tr>
-                                <td>
-                                    <span class="fw-bold text-info">{{ stock.Ticker }}</span>
-                                </td>
-                                <td class="text-truncate" style="max-width: 200px;">
+                                <td><strong style="color: var(--accent);">{{ stock.Ticker }}</strong></td>
+                                <td class="text-truncate" style="max-width: 180px; color: var(--text-secondary);">
                                     {{ stock.Company|default:"-" }}
                                 </td>
-                                <td>${{ stock.Price }}</td>
+                                <td class="money">${{ stock.Price }}</td>
                                 <td>
                                     {% if stock.RSI %}
-                                    <span
-                                        class="badge {% if stock.RSI >= 50 and stock.RSI <= 75 %}bg-success{% else %}bg-secondary{% endif %}">{{
-                                        stock.RSI }}</span>
-                                    {% else %}
-                                    <span class="badge bg-secondary">-</span>
-                                    {% endif %}
+                                    <span class="badge {% if stock.RSI >= 50 and stock.RSI <= 75 %}badge-positive{% else %}" style="background: var(--accent-subtle); color: var(--accent);{% endif %}">{{ stock.RSI }}</span>
+                                    {% else %}-{% endif %}
                                 </td>
                                 <td>
                                     {% if stock.Volume_Ratio >= 1.5 %}
-                                    <span class="badge bg-success">{{ stock.Volume_Ratio }}x</span>
+                                    <span class="badge badge-positive">{{ stock.Volume_Ratio }}x</span>
                                     {% else %}
-                                    <span class="badge bg-secondary">{{ stock.Volume_Ratio }}x</span>
+                                    <span class="badge" style="background: var(--accent-subtle); color: var(--accent);">{{ stock.Volume_Ratio }}x</span>
                                     {% endif %}
                                 </td>
                                 <td>
                                     {% if stock.Pct_of_52W >= 90 %}
-                                    <span class="badge bg-success">{{ stock.Pct_of_52W }}%</span>
+                                    <span class="badge badge-positive">{{ stock.Pct_of_52W }}%</span>
                                     {% else %}
-                                    <span class="badge bg-secondary">{{ stock.Pct_of_52W }}%</span>
+                                    <span class="badge" style="background: var(--accent-subtle); color: var(--accent);">{{ stock.Pct_of_52W }}%</span>
                                     {% endif %}
                                 </td>
                                 <td>
                                     {% if stock.Unicorn_Score >= 3 %}
-                                    <span class="badge bg-warning text-dark fs-6">{{ stock.Unicorn_Score }}/3</span>
+                                    <span class="badge" style="background: rgba(245,158,11,0.15); color: var(--yellow); font-size: 0.85rem;">{{ stock.Unicorn_Score }}/3</span>
                                     {% elif stock.Unicorn_Score >= 2 %}
-                                    <span class="badge bg-info fs-6">{{ stock.Unicorn_Score }}/3</span>
+                                    <span class="badge" style="background: var(--accent-subtle); color: var(--accent); font-size: 0.85rem;">{{ stock.Unicorn_Score }}/3</span>
                                     {% else %}
-                                    <span class="badge bg-secondary fs-6">{{ stock.Unicorn_Score }}/3</span>
+                                    <span class="badge" style="font-size: 0.85rem;">{{ stock.Unicorn_Score }}/3</span>
                                     {% endif %}
                                 </td>
                                 <td>
                                     {% if stock.Ticker in watched_tickers %}
-                                    <span class="badge bg-success">
-                                        <i class="fas fa-eye me-1"></i>In Watchlist
-                                    </span>
+                                    <span class="badge badge-positive"><i class="fas fa-eye me-1"></i>Watching</span>
                                     {% else %}
-                                    <form method="post" action="{% url 'add-to-watchlist' stock.Ticker %}"
-                                        class="d-inline">
+                                    <form method="post" action="{% url 'add-to-watchlist' stock.Ticker %}" class="d-inline">
                                         {% csrf_token %}
-                                        <button type="submit" class="btn btn-sm btn-outline-primary">
+                                        <button type="submit" class="btn btn-sm btn-outline-primary" style="font-size:0.78rem;">
                                             <i class="fas fa-plus me-1"></i>Watch
                                         </button>
                                     </form>
@@ -156,37 +140,37 @@
             </div>
         </div>
         {% elif not error_message and not show_relax_prompt %}
-        <div class="card bg-dark border-secondary">
-            <div class="card-body text-center py-5">
-                <i class="fas fa-horse-head fa-4x text-muted mb-3"></i>
-                <h5 class="text-muted">No scan performed</h5>
-                <p class="text-muted">Click "Run Scan" to search for unicorns</p>
+        <div class="empty-state">
+            <div class="empty-state-icon">
+                <i class="fas fa-horse-head"></i>
             </div>
+            <h4 class="fw-bold mb-2" style="color: var(--text-primary);">No scan performed</h4>
+            <p style="color: var(--text-secondary);">Click "Run Scan" to search for unicorns</p>
         </div>
         {% endif %}
 
         <!-- Legend -->
-        <div class="card bg-dark border-secondary mt-4">
-            <div class="card-body">
-                <h6 class="text-white mb-3"><i class="fas fa-info-circle me-2"></i>Indicator Legend</h6>
-                <div class="row">
-                    <div class="col-md-4">
-                        <div class="d-flex align-items-center mb-2">
-                            <span class="badge bg-success me-2">RSI</span>
-                            <small class="text-muted">50-75: Bullish, nu overbought</small>
-                        </div>
+        <div class="stat-card mt-4">
+            <h6 class="fw-bold mb-3" style="color: var(--text-primary); font-size: 0.85rem;">
+                <i class="fas fa-info-circle me-2" style="color: var(--accent);"></i>Indicator Legend
+            </h6>
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="d-flex align-items-center mb-2">
+                        <span class="badge badge-positive me-2">RSI</span>
+                        <small style="color: var(--text-muted);">50-75: Bullish, not overbought</small>
                     </div>
-                    <div class="col-md-4">
-                        <div class="d-flex align-items-center mb-2">
-                            <span class="badge bg-success me-2">Vol.</span>
-                            <small class="text-muted">≥1.5x: Volume above average</small>
-                        </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="d-flex align-items-center mb-2">
+                        <span class="badge badge-positive me-2">Vol.</span>
+                        <small style="color: var(--text-muted);">1.5x+: Volume above average</small>
                     </div>
-                    <div class="col-md-4">
-                        <div class="d-flex align-items-center mb-2">
-                            <span class="badge bg-success me-2">52W</span>
-                            <small class="text-muted">≥90%: Near all-time high</small>
-                        </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="d-flex align-items-center mb-2">
+                        <span class="badge badge-positive me-2">52W</span>
+                        <small style="color: var(--text-muted);">90%+: Near all-time high</small>
                     </div>
                 </div>
             </div>
@@ -195,13 +179,13 @@
 
     <!-- Sidebar - Watchlist -->
     <div class="col-lg-4">
-        <div class="card bg-dark border-secondary">
-            <div class="card-header bg-dark border-secondary">
-                <h5 class="mb-0 text-white">
-                    <i class="fas fa-eye text-warning me-2"></i>Watchlist
-                </h5>
-            </div>
+        <div class="card">
             <div class="card-body p-0">
+                <div class="px-3 py-3" style="border-bottom: 1px solid var(--border-color);">
+                    <h6 class="mb-0 fw-bold" style="color: var(--text-primary);">
+                        <i class="fas fa-eye me-2" style="color: var(--yellow);"></i>Watchlist
+                    </h6>
+                </div>
                 {% if watchlist %}
                 <div class="table-responsive">
                     <table class="table table-dark table-sm mb-0">
@@ -210,7 +194,7 @@
                                 <th>Ticker</th>
                                 <th>Entry</th>
                                 <th>Current</th>
-                                <th>Daily P/L</th>
+                                <th>Daily</th>
                                 <th>Open P/L</th>
                                 <th></th>
                             </tr>
@@ -219,64 +203,31 @@
                             {% for item in watchlist %}
                             <tr>
                                 <td>
-                                    <span class="fw-bold text-info">{{ item.ticker }}</span>
+                                    <strong style="color: var(--accent);">{{ item.ticker }}</strong>
                                     {% if item.company_name %}
-                                    <br><small class="text-muted text-truncate"
-                                        style="max-width: 80px; display: inline-block;">{{ item.company_name }}</small>
+                                    <br><small style="color: var(--text-muted);" class="text-truncate d-inline-block" style="max-width: 70px;">{{ item.company_name }}</small>
                                     {% endif %}
                                 </td>
-                                <td>
-                                    {% if item.entry_price %}
-                                    <small>${{ item.entry_price }}</small>
-                                    {% else %}
-                                    <small class="text-muted">-</small>
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    {% if item.current_price %}
-                                    <small class="fw-bold">${{ item.current_price }}</small>
-                                    {% else %}
-                                    <small class="text-muted">-</small>
-                                    {% endif %}
-                                </td>
+                                <td class="money">{% if item.entry_price %}<small>${{ item.entry_price }}</small>{% else %}<small style="color:var(--text-muted);">-</small>{% endif %}</td>
+                                <td class="money">{% if item.current_price %}<small class="fw-bold">${{ item.current_price }}</small>{% else %}<small style="color:var(--text-muted);">-</small>{% endif %}</td>
                                 <td>
                                     {% if item.daily_pl != None %}
-                                    {% if item.daily_pl >= 0 %}
-                                    <small class="text-success">
-                                        <i class="fas fa-caret-up me-1"></i>+${{ item.daily_pl }}
-                                        <br><span class="text-success">(+{{ item.daily_pl_pct }}%)</span>
+                                    <small class="{% if item.daily_pl >= 0 %}positive{% else %}negative{% endif %}">
+                                        {% if item.daily_pl >= 0 %}+{% endif %}${{ item.daily_pl }}
                                     </small>
-                                    {% else %}
-                                    <small class="text-danger">
-                                        <i class="fas fa-caret-down me-1"></i>${{ item.daily_pl }}
-                                        <br><span class="text-danger">({{ item.daily_pl_pct }}%)</span>
-                                    </small>
-                                    {% endif %}
-                                    {% else %}
-                                    <small class="text-muted">-</small>
-                                    {% endif %}
+                                    {% else %}<small style="color:var(--text-muted);">-</small>{% endif %}
                                 </td>
                                 <td>
                                     {% if item.open_pl != None %}
-                                    {% if item.open_pl >= 0 %}
-                                    <small class="text-success fw-bold">
-                                        <i class="fas fa-arrow-up me-1"></i>+${{ item.open_pl }}
-                                        <br><span class="badge bg-success">+{{ item.open_pl_pct }}%</span>
+                                    <small class="fw-bold {% if item.open_pl >= 0 %}positive{% else %}negative{% endif %}">
+                                        {% if item.open_pl >= 0 %}+{% endif %}${{ item.open_pl }}
                                     </small>
-                                    {% else %}
-                                    <small class="text-danger fw-bold">
-                                        <i class="fas fa-arrow-down me-1"></i>${{ item.open_pl }}
-                                        <br><span class="badge bg-danger">{{ item.open_pl_pct }}%</span>
-                                    </small>
-                                    {% endif %}
-                                    {% else %}
-                                    <small class="text-muted">-</small>
-                                    {% endif %}
+                                    {% else %}<small style="color:var(--text-muted);">-</small>{% endif %}
                                 </td>
                                 <td>
                                     <form method="post" action="{% url 'remove-from-watchlist' item.pk %}">
                                         {% csrf_token %}
-                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger p-1" title="Remove" style="font-size:0.7rem;">
                                             <i class="fas fa-trash"></i>
                                         </button>
                                     </form>
@@ -288,28 +239,19 @@
                 </div>
                 {% else %}
                 <div class="text-center py-4">
-                    <i class="fas fa-list fa-2x text-muted mb-2"></i>
-                    <p class="text-muted mb-0">Watchlist is empty</p>
-                    <small class="text-muted">Add stocks from the scan results</small>
+                    <i class="fas fa-list fa-2x mb-2" style="color: var(--text-muted);"></i>
+                    <p style="color: var(--text-muted); margin: 0;">Watchlist is empty</p>
+                    <small style="color: var(--text-muted);">Add stocks from scan results</small>
                 </div>
                 {% endif %}
             </div>
         </div>
 
-        <!-- Info Card -->
-        <div class="card bg-dark border-info mt-4">
-            <div class="card-body">
-                <h6 class="text-info"><i class="fas fa-lightbulb me-2"></i>What are Unicorns?</h6>
-                <p class="text-muted small mb-0">
-                    Unicorns are stocks with rapid growth potential (20-30% in 3-6 months).
-                    The scanner identifies companies with:
-                </p>
-                <ul class="text-muted small mt-2 mb-0">
-                    <li>Momentum bullish (RSI 50-75)</li>
-                    <li>Increased volume (above 1.5x average)</li>
-                    <li>Near 52-week high</li>
-                </ul>
-            </div>
+        <div class="stat-card mt-4">
+            <h6 style="color: var(--accent); font-size: 0.88rem;"><i class="fas fa-lightbulb me-2"></i>What are Unicorns?</h6>
+            <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0;">
+                Stocks with rapid growth potential (20-30% in 3-6 months). The scanner identifies companies with bullish momentum (RSI 50-75), increased volume (1.5x+), and proximity to 52-week highs.
+            </p>
         </div>
     </div>
 </div>

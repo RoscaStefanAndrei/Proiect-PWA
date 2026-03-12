@@ -9,8 +9,12 @@
         <span class="visually-hidden">Loading...</span>
     </div>
     <h3 class="mt-3">Analysis in Progress...</h3>
-    <p>Please wait. Do not close the server (you can close this tab).</p>
+    <p>Please wait. The page will refresh automatically when complete.</p>
     <a href="{% url 'analysis-status' %}" class="btn btn-outline-primary mt-3">Refresh Status</a>
+    <script>
+        // Auto-refresh every 10 seconds while analysis is running
+        setTimeout(function() { window.location.reload(); }, 10000);
+    </script>
     {% else %}
     <div class="text-success mb-3">
         <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" fill="currentColor" class="bi bi-check-circle"

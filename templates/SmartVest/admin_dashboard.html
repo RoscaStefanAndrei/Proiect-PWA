@@ -1,92 +1,74 @@
 {% extends 'base.html' %}
 
 {% block title %}Admin Dashboard{% endblock %}
+{% block header_title %}Admin Dashboard{% endblock %}
 
 {% block content %}
-<div class="container py-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>Admin Dashboard</h2>
-        <span class="badge bg-danger">Superuser Access</span>
-    </div>
-
-    <!-- Statistics Cards -->
-    <div class="row mb-4">
-        <div class="col-md-6 mb-3">
-            <div class="card text-white bg-primary h-100 shadow-sm">
-                <div class="card-body">
-                    <h5 class="card-title">Total Users</h5>
-                    <div class="display-4 fw-bold">{{ total_users }}</div>
-                    <p class="card-text">Registered accounts</p>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-6 mb-3">
-            <div class="card text-white bg-success h-100 shadow-sm">
-                <div class="card-body">
-                    <h5 class="card-title">Total Portfolios</h5>
-                    <div class="display-4 fw-bold">{{ total_portfolios }}</div>
-                    <p class="card-text">Saved across all users</p>
-                </div>
-            </div>
+<div class="row mb-4 g-3">
+    <div class="col-md-6">
+        <div class="admin-stat blue">
+            <div class="stat-label">Total Users</div>
+            <div class="stat-number">{{ total_users }}</div>
+            <div style="color: var(--text-muted); font-size: 0.82rem; margin-top: 0.25rem;">Registered accounts</div>
         </div>
     </div>
-
-    <!-- User Management Table -->
-    <div class="card shadow-sm">
-        <div class="card-header bg-light">
-            <h5 class="mb-0">Client List</h5>
+    <div class="col-md-6">
+        <div class="admin-stat green">
+            <div class="stat-label">Total Portfolios</div>
+            <div class="stat-number">{{ total_portfolios }}</div>
+            <div style="color: var(--text-muted); font-size: 0.82rem; margin-top: 0.25rem;">Saved across all users</div>
         </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover table-striped mb-0">
-                    <thead class="table-dark">
-                        <tr>
-                            <th>Username</th>
-                            <th>Email</th>
-                            <th>Profiles</th>
-                            <th>Portfolios</th>
-                            <th>Joined Date</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for item in user_data %}
-                        <tr>
-                            <td>
-                                <div class="d-flex align-items-center">
-                                    {% if item.user.userprofile.avatar %}
-                                    <img src="{{ item.user.userprofile.avatar.url }}" class="rounded-circle me-2"
-                                        width="30" height="30">
-                                    {% else %}
-                                    <div class="rounded-circle bg-secondary d-flex justify-content-center align-items-center me-2 text-white"
-                                        style="width: 30px; height: 30px;">
-                                        {{ item.user.username|first|upper }}
-                                    </div>
-                                    {% endif %}
-                                    <strong>{{ item.user.username }}</strong>
-                                    {% if item.user.is_superuser %}
-                                    <span class="badge bg-danger ms-2" style="font-size: 0.6rem;">ADMIN</span>
-                                    {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="px-3 py-3 d-flex justify-content-between align-items-center" style="border-bottom: 1px solid var(--border-color);">
+            <h6 class="mb-0 fw-bold" style="color: var(--text-primary);">Client List</h6>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-dark table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Email</th>
+                        <th>Portfolios</th>
+                        <th>Joined</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in user_data %}
+                    <tr>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                {% if item.user.userprofile.avatar %}
+                                <img src="{{ item.user.userprofile.avatar.url }}" class="rounded-circle"
+                                    width="30" height="30" style="object-fit: cover;">
+                                {% else %}
+                                <div class="user-avatar" style="width:30px;height:30px;font-size:0.7rem;">
+                                    {{ item.user.username|first|upper }}
                                 </div>
-                            </td>
-                            <td>{{ item.user.email }}</td>
-                            <td>
-                                <!-- Placeholder for potential multiple profiles logic -->
-                                <span class="badge bg-info text-dark">Balanced</span>
-                            </td>
-                            <td>
-                                <span class="badge bg-secondary">{{ item.portfolio_count }}</span>
-                            </td>
-                            <td>{{ item.user.date_joined|date:"M d, Y" }}</td>
-                            <td>
-                                <a href="{% url 'admin-user-detail' item.user.id %}"
-                                    class="btn btn-sm btn-outline-primary" title="View Details">View</a>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+                                {% endif %}
+                                <strong>{{ item.user.username }}</strong>
+                                {% if item.user.is_superuser %}
+                                <span class="badge" style="background: var(--red-subtle); color: var(--red); font-size: 0.6rem;">ADMIN</span>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td style="color: var(--text-secondary);">{{ item.user.email }}</td>
+                        <td>
+                            <span class="badge" style="background: var(--accent-subtle); color: var(--accent);">{{ item.portfolio_count }}</span>
+                        </td>
+                        <td style="color: var(--text-muted); font-size: 0.82rem;">{{ item.user.date_joined|date:"M d, Y" }}</td>
+                        <td>
+                            <a href="{% url 'admin-user-detail' item.user.id %}"
+                                class="btn btn-sm btn-outline-primary" style="font-size: 0.78rem;">View</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
 </div>

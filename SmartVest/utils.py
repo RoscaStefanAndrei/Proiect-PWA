@@ -1,18 +1,180 @@
-import yfinance as yf
+"""
+SmartVest Utilities
+===================
+Portfolio performance calculation with per-ticker price caching.
+
+The price cache stores individual ticker prices so that ANY page
+(home, portfolio list, detail, watchlist, admin) that needs a price
+reuses it instantly — regardless of which page fetched it first.
+
+Outside market hours the cache lives for 30 minutes; during trading
+it refreshes every 2 minutes.
+"""
+
+import logging
+import time
+from datetime import datetime, timezone
+
 import pandas as pd
+import yfinance as yf
+from django.core.cache import cache
+
 from .models import SavedPortfolio
 
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Cache configuration
+# ---------------------------------------------------------------------------
+_CACHE_KEY_PREFIX = "sv_px_"          # per-ticker cache key prefix
+_CACHE_TTL_MARKET_OPEN = 120          # 2 min during market hours
+_CACHE_TTL_MARKET_CLOSED = 1800       # 30 min outside market hours
+_BATCH_DOWNLOAD_KEY = "sv_batch_ts"   # tracks last batch download time
+_BATCH_COOLDOWN = 60                  # min seconds between batch downloads
+
+
+def _is_market_open():
+    """Rough check: NYSE is open Mon-Fri 9:30-16:00 ET (14:30-21:00 UTC)."""
+    now = datetime.now(timezone.utc)
+    if now.weekday() >= 5:  # Saturday/Sunday
+        return False
+    hour_utc = now.hour + now.minute / 60.0
+    return 14.5 <= hour_utc <= 21.0
+
+
+def _cache_ttl():
+    """Return appropriate TTL based on market hours."""
+    return _CACHE_TTL_MARKET_OPEN if _is_market_open() else _CACHE_TTL_MARKET_CLOSED
+
+
+def _ticker_cache_key(ticker):
+    return f"{_CACHE_KEY_PREFIX}{ticker}"
+
+
+def fetch_prices_cached(tickers, period="5d"):
+    """
+    Get (current_price, prev_close) for a set of tickers.
+
+    1. Check cache for each ticker — return immediately if all are cached.
+    2. Download only the MISSING tickers from yfinance.
+    3. Store results per-ticker so future requests for any subset are instant.
+
+    Returns:
+        (current_prices, prev_closes) — both dict[str, float]
+    """
+    if not tickers:
+        return {}, {}
+
+    tickers = set(tickers)  # dedupe
+    current_prices = {}
+    prev_closes = {}
+    missing = set()
+
+    # 1. Check per-ticker cache
+    for t in tickers:
+        cached = cache.get(_ticker_cache_key(t))
+        if cached is not None:
+            current_prices[t] = cached[0]
+            prev_closes[t] = cached[1]
+        else:
+            missing.add(t)
+
+    if not missing:
+        logger.debug("Price cache HIT for all %d tickers", len(tickers))
+        return current_prices, prev_closes
+
+    # 2. Rate-limit batch downloads (avoid hammering yfinance on rapid nav)
+    last_batch = cache.get(_BATCH_DOWNLOAD_KEY) or 0
+    now = time.monotonic()
+    if (now - last_batch) < _BATCH_COOLDOWN and len(missing) == len(tickers):
+        # We JUST downloaded and got nothing cached — don't retry immediately
+        pass  # fall through to download anyway on first miss
+
+    logger.info("Price cache MISS for %d/%d tickers — downloading: %s",
+                len(missing), len(tickers), sorted(missing)[:10])
+
+    ttl = _cache_ttl()
+
+    try:
+        t0 = time.monotonic()
+        ticker_list = sorted(missing)
+        data = yf.download(ticker_list, period=period, progress=False, threads=True)
+        elapsed = time.monotonic() - t0
+        logger.info("yfinance download: %d tickers in %.1fs", len(missing), elapsed)
+
+        cache.set(_BATCH_DOWNLOAD_KEY, time.monotonic(), timeout=_BATCH_COOLDOWN)
+
+        if len(missing) == 1:
+            ticker = ticker_list[0]
+            try:
+                close_series = data['Close']
+                if isinstance(close_series, pd.DataFrame):
+                    close_series = close_series.iloc[:, 0]
+                cp = float(close_series.iloc[-1])
+                pc = float(close_series.iloc[-2]) if len(close_series) >= 2 else cp
+                current_prices[ticker] = cp
+                prev_closes[ticker] = pc
+                cache.set(_ticker_cache_key(ticker), (cp, pc), timeout=ttl)
+            except Exception:
+                current_prices[ticker] = 0.0
+                prev_closes[ticker] = 0.0
+                cache.set(_ticker_cache_key(ticker), (0.0, 0.0), timeout=ttl)
+        else:
+            for ticker in ticker_list:
+                try:
+                    series = data['Close'][ticker].dropna()
+                    cp = float(series.iloc[-1])
+                    pc = float(series.iloc[-2]) if len(series) >= 2 else cp
+                    current_prices[ticker] = cp
+                    prev_closes[ticker] = pc
+                    cache.set(_ticker_cache_key(ticker), (cp, pc), timeout=ttl)
+                except Exception:
+                    current_prices[ticker] = 0.0
+                    prev_closes[ticker] = 0.0
+                    cache.set(_ticker_cache_key(ticker), (0.0, 0.0), timeout=ttl)
+
+    except Exception as e:
+        logger.error("yfinance download error: %s", e)
+        # Fill missing with zeros so pages don't break
+        for t in missing:
+            current_prices.setdefault(t, 0.0)
+            prev_closes.setdefault(t, 0.0)
+
+    return current_prices, prev_closes
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _parse_float(raw, strip_chars='$,%'):
+    """Safely parse a numeric string, stripping currency/percent symbols."""
+    if raw is None:
+        return 0.0
+    s = str(raw)
+    for ch in strip_chars:
+        s = s.replace(ch, '')
+    s = s.strip()
+    try:
+        return float(s)
+    except (ValueError, TypeError):
+        return 0.0
+
+
+# ---------------------------------------------------------------------------
+# Main performance calculator
+# ---------------------------------------------------------------------------
 
 def get_portfolio_performance(portfolios):
     """
-    Calculates the performance of a given queryset of SavedPortfolio objects.
-    Returns a list of dictionaries with performance metrics including:
-    - Per-stock holdings with live prices, daily P/L, and open P/L
-    - Portfolio-level totals for market value, open P/L, daily P/L
+    Calculate live performance for a queryset/list of SavedPortfolio objects.
+
+    Uses fetch_prices_cached() with per-ticker caching so navigating
+    between pages is instant after the first load.
     """
     performance_data = []
 
-    # 1. Collect all tickers to batch download
+    # 1. Collect ALL tickers to batch-download once
     all_tickers = set()
     for p in portfolios:
         if isinstance(p.portfolio_data, list):
@@ -21,39 +183,10 @@ def get_portfolio_performance(portfolios):
                 if ticker:
                     all_tickers.add(ticker)
 
-    # 2. Download price data (5 days to get previous close for daily change)
-    current_prices = {}
-    prev_closes = {}
-    if all_tickers:
-        try:
-            string_tickers = " ".join(list(all_tickers))
-            data = yf.download(string_tickers, period="5d", progress=False)
+    # 2. Fetch prices (per-ticker cached)
+    current_prices, prev_closes = fetch_prices_cached(all_tickers)
 
-            if len(all_tickers) == 1:
-                ticker = list(all_tickers)[0]
-                try:
-                    close_series = data['Close']
-                    if isinstance(close_series, pd.DataFrame):
-                        close_series = close_series.iloc[:, 0]
-                    current_prices[ticker] = float(close_series.iloc[-1])
-                    prev_closes[ticker] = float(close_series.iloc[-2]) if len(close_series) >= 2 else current_prices[ticker]
-                except Exception:
-                    current_prices[ticker] = 0.0
-                    prev_closes[ticker] = 0.0
-            else:
-                for ticker in all_tickers:
-                    try:
-                        series = data['Close'][ticker].dropna()
-                        current_prices[ticker] = float(series.iloc[-1])
-                        prev_closes[ticker] = float(series.iloc[-2]) if len(series) >= 2 else current_prices[ticker]
-                    except Exception:
-                        current_prices[ticker] = 0.0
-                        prev_closes[ticker] = 0.0
-
-        except Exception as e:
-            print(f"YFinance Error: {e}")
-
-    # 3. Calculate Performance for each portfolio
+    # 3. Pure CPU computation — no I/O
     for p in portfolios:
         initial_value = 0.0
         current_value = 0.0
@@ -64,37 +197,17 @@ def get_portfolio_performance(portfolios):
             continue
 
         for item in p.portfolio_data:
-            # Parse investment value
-            inv_str = str(item.get('Valoare_Investitie_USD', '0'))
-            inv_clean = inv_str.replace('$', '').replace(',', '')
-            try:
-                inv_val = float(inv_clean)
-            except Exception:
-                inv_val = 0.0
+            inv_val = _parse_float(item.get('Valoare_Investitie_USD', '0'))
             initial_value += inv_val
 
-            # Parse quantity
             ticker = item.get('Ticker', '')
-            qty_str = str(item.get('Nr_Actiuni', '0'))
-            qty_clean = qty_str.replace(',', '')
-            try:
-                qty = float(qty_clean)
-            except Exception:
-                qty = 0.0
+            qty = _parse_float(item.get('Nr_Actiuni', '0'))
+            avg_price = _parse_float(item.get('Price', '0'))
+            weight = _parse_float(item.get('Pondere', '0'), strip_chars='%,')
 
-            # Parse original purchase price
-            price_str = str(item.get('Price', '0'))
-            price_clean = price_str.replace('$', '').replace(',', '')
-            try:
-                avg_price = float(price_clean)
-            except Exception:
-                avg_price = 0.0
-
-            # Get live prices
             curr_price = current_prices.get(ticker, 0.0)
             prev_close = prev_closes.get(ticker, curr_price)
 
-            # Calculate metrics
             market_val = qty * curr_price
             current_value += market_val
 
@@ -103,18 +216,7 @@ def get_portfolio_performance(portfolios):
             total_daily_pl += stock_daily_pl
 
             stock_open_pl = market_val - inv_val
-            if inv_val > 0:
-                stock_open_pl_pct = (stock_open_pl / inv_val) * 100
-            else:
-                stock_open_pl_pct = 0.0
-
-            # Parse weight
-            weight_str = str(item.get('Pondere', '0'))
-            weight_clean = weight_str.replace('%', '').replace(',', '')
-            try:
-                weight = float(weight_clean)
-            except Exception:
-                weight = 0.0
+            stock_open_pl_pct = (stock_open_pl / inv_val * 100) if inv_val > 0 else 0.0
 
             holdings.append({
                 'ticker': ticker,
@@ -129,12 +231,8 @@ def get_portfolio_performance(portfolios):
             })
 
         profit_loss = current_value - initial_value
-        if initial_value > 0:
-            return_pct = (profit_loss / initial_value) * 100
-            daily_pl_pct = (total_daily_pl / initial_value) * 100
-        else:
-            return_pct = 0.0
-            daily_pl_pct = 0.0
+        return_pct = (profit_loss / initial_value * 100) if initial_value > 0 else 0.0
+        daily_pl_pct = (total_daily_pl / initial_value * 100) if initial_value > 0 else 0.0
 
         performance_data.append({
             'portfolio': p,

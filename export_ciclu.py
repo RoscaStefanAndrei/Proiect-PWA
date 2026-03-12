@@ -57,7 +57,7 @@ def main():
     print(f"Baza de date conține {len(runs)} backtests finalizate.")
     
     # Create target directory
-    archive_dir = 'c:\\Licenta\\Proiect-PWA\\backtest_archive\\ciclu_7_alpha_protocol_v2'
+    archive_dir = 'c:\\Licenta\\Proiect-PWA\\backtest_archive\\ciclu_9_final_1000'
     os.makedirs(archive_dir, exist_ok=True)
     
     profiles = ['conservative', 'balanced', 'aggressive']

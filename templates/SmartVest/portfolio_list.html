@@ -7,29 +7,32 @@
 <div class="row">
     <div class="col-12">
         {% if performance_data %}
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <span class="stat-label mb-0">{{ performance_data|length }} Portfolio{{ performance_data|length|pluralize }}</span>
+        </div>
+
         {% for item in performance_data %}
-        <div class="card mb-2 bg-dark-card border border-secondary shadow-sm portfolio-card">
+        <div class="card mb-3 portfolio-card">
             <a href="{% url 'portfolio-detail' item.portfolio.id %}" class="text-decoration-none">
-                <div class="card-body py-2 px-3">
+                <div class="card-body py-3 px-3">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <h6 class="mb-0 text-white fw-bold">
+                        <h6 class="mb-0 fw-bold" style="color: var(--text-primary);">
                             {{ item.portfolio.name }}
                         </h6>
-                        <small class="text-muted" style="font-size:0.7rem">
+                        <small style="color: var(--text-muted); font-size: 0.72rem;">
                             {{ item.portfolio.created_at|date:"d M Y" }}
                         </small>
                     </div>
-                    <div class="d-flex gap-3 flex-wrap">
+                    <div class="d-flex gap-4 flex-wrap">
                         <div class="metric-pill">
                             <span class="metric-label">Value</span>
-                            <span class="metric-value text-white">
+                            <span class="metric-value money" style="color: var(--text-primary);">
                                 ${{ item.current_value|floatformat:2 }}
                             </span>
                         </div>
                         <div class="metric-pill">
                             <span class="metric-label">Open P/L</span>
-                            <span class="metric-value
- {% if item.profit_loss >= 0 %}text-success{% else %}text-danger{% endif %}">
+                            <span class="metric-value {% if item.profit_loss >= 0 %}positive{% else %}negative{% endif %}">
                                 {% if item.profit_loss >= 0 %}+{% endif %}${{ item.profit_loss|floatformat:2 }}
                                 <small class="ms-1">/
                                     {% if item.return_pct >= 0 %}+{% endif %}{{ item.return_pct|floatformat:2 }}%
@@ -38,8 +41,7 @@
                         </div>
                         <div class="metric-pill">
                             <span class="metric-label">Daily P/L</span>
-                            <span class="metric-value
- {% if item.total_daily_pl >= 0 %}text-success{% else %}text-danger{% endif %}">
+                            <span class="metric-value {% if item.total_daily_pl >= 0 %}positive{% else %}negative{% endif %}">
                                 {% if item.total_daily_pl >= 0 %}+{% endif %}${{ item.total_daily_pl|floatformat:2 }}
                                 <small class="ms-1">/
                                     {% if item.daily_pl_pct >= 0 %}+{% endif %}{{ item.daily_pl_pct|floatformat:2 }}%
@@ -49,19 +51,51 @@
                     </div>
                 </div>
             </a>
-            <div class="card-footer bg-transparent border-top border-secondary py-1 px-3 d-flex justify-content-end">
-                <a href="{% url 'portfolio-delete' item.portfolio.id %}" class="btn btn-link btn-sm text-danger p-0"
-                    style="font-size:0.75rem">
+            <div class="card-footer bg-transparent py-1 px-3 d-flex justify-content-end" style="border-top: 1px solid var(--border-color);">
+                <a href="{% url 'portfolio-delete' item.portfolio.id %}" class="btn btn-link btn-sm p-0"
+                    style="font-size: 0.75rem; color: var(--red); text-decoration: none;">
                     <i class="fas fa-trash-alt me-1"></i>Delete
                 </a>
             </div>
         </div>
         {% endfor %}
 
+        <!-- Pagination -->
+        {% if is_paginated %}
+        <nav aria-label="Portfolio pagination" class="mt-3">
+            <ul class="pagination pagination-sm justify-content-center">
+                {% if page_obj.has_previous %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}">
+                        <i class="fas fa-chevron-left"></i>
+                    </a>
+                </li>
+                {% endif %}
+
+                {% for num in page_obj.paginator.page_range %}
+                <li class="page-item {% if page_obj.number == num %}active{% endif %}">
+                    <a class="page-link" href="?page={{ num }}">{{ num }}</a>
+                </li>
+                {% endfor %}
+
+                {% if page_obj.has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.next_page_number }}">
+                        <i class="fas fa-chevron-right"></i>
+                    </a>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
+
         {% else %}
-        <div class="text-center py-5">
-            <i class="fas fa-folder-open fa-3x text-muted mb-3"></i>
-            <p class="text-muted">You don't have any saved portfolios yet.</p>
+        <div class="empty-state">
+            <div class="empty-state-icon">
+                <i class="fas fa-wallet"></i>
+            </div>
+            <h4 class="fw-bold mb-2" style="color: var(--text-primary);">No Portfolios Yet</h4>
+            <p style="color: var(--text-secondary);">Create your first portfolio with our analysis engine.</p>
             <a href="{% url 'run-analysis' %}" class="btn btn-primary rounded-pill px-4">New Analysis</a>
         </div>
         {% endif %}

@@ -1003,9 +1003,13 @@ def run_full_pipeline(profile_type="balanced", budget=10000.0, filters_dict=None
         by="Pondere", ascending=False
     )
 
-    # Adăugăm Prețul Curent
+    # Adăugăm Prețul Curent + Sector + Industry
+    merge_cols = ["Ticker", "Price"]
+    for col in ["Sector", "Industry"]:
+        if col in df_companii_finale.columns:
+            merge_cols.append(col)
     df_alocare = df_alocare.merge(
-        df_companii_finale[["Ticker", "Price"]],
+        df_companii_finale[merge_cols].drop_duplicates(subset="Ticker"),
         on="Ticker",
         how="left",
     )

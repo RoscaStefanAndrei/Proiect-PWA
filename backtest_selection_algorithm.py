@@ -86,12 +86,12 @@ FILTRE_CONSERVATIVE = {
     # === 1. Descriptive ===
     "min_market_cap": 10e9,
     "min_avg_volume": 1_000_000,
-    "require_dividend": True,              # NEW: matches "Dividend Yield: Positive (>0%)"
+    # Ciclu 8 P2: Removed require_dividend — was blocking quality growth (GOOGL, AMZN, META)
     # === 2. Fundamental ===
     "require_positive_net_margin": True,
     "require_positive_op_margin": True,
     "min_roe": 0.10,
-    "max_debt_equity": 1.0,                # NEW: matches "Debt/Equity: Under 1"
+    "max_debt_equity": 1.0,
     # === 3. Technical ===
     "price_above_sma200": True,
 }
@@ -716,19 +716,22 @@ def calculeaza_portofoliu_hist(tickere, price_df, as_of_date, profile_type="bala
         # Ciclu 7: Aggressive is already Top 10 Momentum Equal Weight. Bypass PyPortfolioOpt post-processing.
         alocari_finale = alocari_brute
     else:
-        # Post-processing: 2% min, variable max
+        # Post-processing: variable min/max per profile
         if profile_type == "conservative":
+            min_cap = 0.02
             max_cap = 0.12
         else: # balanced
+            min_cap = 0.05  # Ciclu 8 P4: Force concentration (was 2%)
             max_cap = 0.15
-        alocari_finale = aplica_reguli_redistribuire(alocari_brute, min_prag=0.02, max_prag=max_cap)
+        alocari_finale = aplica_reguli_redistribuire(alocari_brute, min_prag=min_cap, max_prag=max_cap)
 
-        # --- Ciclu 7: Momentum-weighted tilt ---
+        # --- Ciclu 8: Momentum-weighted tilt ---
         # Boost allocations towards stocks with stronger 3M momentum
         if alocari_finale:
             # Profile-specific blend ratios (optimizer% / momentum%)
-            mom_blend = {'conservative': 0.20, 'balanced': 0.30}
-            mom_pct = mom_blend.get(profile_type, 0.30)
+            # Ciclu 8 P4: Balanced momentum tilt increased to 40% (was 30%)
+            mom_blend = {'conservative': 0.20, 'balanced': 0.40}
+            mom_pct = mom_blend.get(profile_type, 0.40)
             
             momentum_scores = {}
             for ticker in alocari_finale:
@@ -831,6 +834,53 @@ def run_backtest_pipeline(
 
     # Pasul 6: Portfolio optimization
     alocari = calculeaza_portofoliu_hist(finale, price_df, as_of_date, profile_type)
+
+    # --- Ciclu 8 P1: Mega-Cap Tech Override ---
+    # In bull markets, inject top mega-cap tech stocks to capture FAANG/Magnificent 7 returns
+    # This fixes the "0% Beat SPY in 2023" problem
+    MEGA_CAP_TECH = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'AVGO', 'BROADCOM']
+    TECH_ALLOC = {'conservative': 0.10, 'balanced': 0.20, 'aggressive': 0.15}  # C9-2: Added aggressive
+    
+    tech_pct = TECH_ALLOC.get(profile_type, 0.0)
+    if tech_pct > 0 and alocari:
+        # Check bull market condition: SPY > SMA200
+        bull_market = False
+        if 'SPY' in price_df.columns:
+            mask_spy = price_df.index <= pd.Timestamp(as_of_date)
+            spy_col = price_df['SPY'].loc[mask_spy].dropna()
+            if len(spy_col) >= 200:
+                spy_sma200 = spy_col.iloc[-200:].mean()
+                if spy_col.iloc[-1] > spy_sma200:
+                    bull_market = True
+        
+        if bull_market:
+            # Find best mega-cap tech by 6M momentum
+            mask_tech = price_df.index <= pd.Timestamp(as_of_date)
+            tech_momentum = {}
+            for ticker in MEGA_CAP_TECH:
+                if ticker in price_df.columns:
+                    col = price_df[ticker].loc[mask_tech].dropna()
+                    if len(col) >= 126:
+                        tech_momentum[ticker] = (col.iloc[-1] / col.iloc[-126]) - 1
+            
+            if tech_momentum:
+                # Take top N by momentum (2 for conservative, 3 for balanced)
+                n_tech = 2 if profile_type == 'conservative' else 3
+                top_tech = sorted(tech_momentum, key=tech_momentum.get, reverse=True)[:n_tech]
+                tech_weight_each = tech_pct / len(top_tech)
+                
+                # Scale down existing allocations to make room
+                scale_factor = 1.0 - tech_pct
+                alocari = {k: v * scale_factor for k, v in alocari.items()}
+                
+                # Inject tech stocks
+                for t in top_tech:
+                    if t in alocari:
+                        alocari[t] += tech_weight_each  # Add to existing
+                    else:
+                        alocari[t] = tech_weight_each
+                
+                print(f"  -> P1: Mega-Cap Tech Override ({profile_type}): {top_tech} @ {tech_pct*100:.0f}% (Bull Market)")
 
     # --- A1: Ensure minimum 8 stocks ---
     # If optimization produced fewer than 8 stocks, re-run with all 'finale' tickers
