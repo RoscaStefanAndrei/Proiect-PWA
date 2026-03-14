@@ -31,6 +31,8 @@ _CACHE_TTL_MARKET_OPEN = 120          # 2 min during market hours
 _CACHE_TTL_MARKET_CLOSED = 1800       # 30 min outside market hours
 _BATCH_DOWNLOAD_KEY = "sv_batch_ts"   # tracks last batch download time
 _BATCH_COOLDOWN = 60                  # min seconds between batch downloads
+_INFO_CACHE_PREFIX = "sv_info_"       # per-ticker info cache (sector/industry)
+_INFO_CACHE_TTL = 86400               # 24 hours — this data rarely changes
 
 
 def _is_market_open():
@@ -162,6 +164,50 @@ def _parse_float(raw, strip_chars='$,%'):
 
 
 # ---------------------------------------------------------------------------
+# Ticker info (sector / industry / type) — cached 24h
+# ---------------------------------------------------------------------------
+
+def fetch_ticker_info_cached(tickers):
+    """
+    Get {ticker: {sector, industry, quoteType}} for a set of tickers.
+    Results are cached for 24 hours since this data rarely changes.
+    """
+    if not tickers:
+        return {}
+
+    tickers = set(tickers)
+    result = {}
+    missing = set()
+
+    for t in tickers:
+        cached = cache.get(f"{_INFO_CACHE_PREFIX}{t}")
+        if cached is not None:
+            result[t] = cached
+        else:
+            missing.add(t)
+
+    if not missing:
+        return result
+
+    logger.info("Ticker info cache MISS for %d tickers — fetching", len(missing))
+
+    for t in missing:
+        info = {'sector': '', 'industry': '', 'quoteType': ''}
+        try:
+            tk = yf.Ticker(t)
+            fast_info = tk.info
+            info['sector'] = fast_info.get('sector', '')
+            info['industry'] = fast_info.get('industry', '')
+            info['quoteType'] = fast_info.get('quoteType', '')
+        except Exception:
+            logger.debug("Could not fetch info for %s", t)
+        result[t] = info
+        cache.set(f"{_INFO_CACHE_PREFIX}{t}", info, timeout=_INFO_CACHE_TTL)
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Main performance calculator
 # ---------------------------------------------------------------------------
 
@@ -185,6 +231,15 @@ def get_portfolio_performance(portfolios):
 
     # 2. Fetch prices (per-ticker cached)
     current_prices, prev_closes = fetch_prices_cached(all_tickers)
+
+    # 2b. Find tickers missing sector/industry in saved data and fetch from yfinance
+    tickers_needing_info = set()
+    for p in portfolios:
+        if isinstance(p.portfolio_data, list):
+            for item in p.portfolio_data:
+                if not item.get('Sector') and item.get('Ticker'):
+                    tickers_needing_info.add(item['Ticker'])
+    ticker_info = fetch_ticker_info_cached(tickers_needing_info)
 
     # 3. Pure CPU computation — no I/O
     for p in portfolios:
@@ -218,6 +273,12 @@ def get_portfolio_performance(portfolios):
             stock_open_pl = market_val - inv_val
             stock_open_pl_pct = (stock_open_pl / inv_val * 100) if inv_val > 0 else 0.0
 
+            # Sector/industry: prefer saved data, fall back to live yfinance
+            live = ticker_info.get(ticker, {})
+            sector = item.get('Sector', '') or live.get('sector', '')
+            industry = item.get('Industry', '') or live.get('industry', '')
+            asset_type = item.get('Tip_Activ', item.get('quoteType', '')) or live.get('quoteType', '')
+
             holdings.append({
                 'ticker': ticker,
                 'weight': weight,
@@ -228,6 +289,9 @@ def get_portfolio_performance(portfolios):
                 'daily_pl': stock_daily_pl,
                 'open_pl': stock_open_pl,
                 'open_pl_pct': stock_open_pl_pct,
+                'sector': sector,
+                'industry': industry,
+                'asset_type': asset_type,
             })
 
         profit_loss = current_value - initial_value

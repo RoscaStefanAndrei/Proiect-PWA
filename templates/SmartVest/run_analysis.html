@@ -81,7 +81,7 @@
         background: rgba(255, 255, 255, 0.05);
         border: 2px solid var(--border-color);
         border-radius: 10px;
-        color: white;
+        color: var(--text-primary);
         font-size: 1.25rem;
         font-weight: 600;
         text-align: center;
@@ -161,7 +161,7 @@
         border: 1px solid rgba(255, 255, 255, 0.2);
         border-radius: 8px;
         padding: 0.5rem 0.75rem;
-        color: white;
+        color: var(--text-primary);
         font-size: 0.8rem;
         cursor: pointer;
         transition: all 0.3s ease;
@@ -211,7 +211,7 @@
         background: transparent;
         width: 100%;
         text-align: left;
-        color: white;
+        color: var(--text-primary);
     }
 
     .strategy-option:hover {
@@ -421,7 +421,7 @@
                             </button>
                             <hr class="my-2 border-secondary">
                             <a href="{% url 'custom-filters' %}" class="strategy-option text-decoration-none"
-                                style="color: white;">
+                                style="color: var(--text-primary);">
                                 <div class="option-icon custom"><i class="fas fa-sliders-h"></i></div>
                                 <div class="option-details">
                                     <div class="option-name">Custom Filtering</div>

@@ -38,6 +38,7 @@ from django.views.decorators.http import require_POST, require_http_methods
 from django.views.generic import DeleteView, DetailView, ListView
 
 from .forms import (
+    NotificationPreferenceForm,
     SavedPortfolioForm,
     UserProfileForm,
     UserRegisterForm,
@@ -46,6 +47,9 @@ from .forms import (
 from .models import (
     BacktestRun,
     FilterPreset,
+    Notification,
+    NotificationPreference,
+    PriceAlert,
     SavedPortfolio,
     UserProfile,
     WatchedUnicorn,
@@ -389,6 +393,7 @@ def register(request):
         if form.is_valid():
             user = form.save()
             UserProfile.objects.create(user=user)
+            NotificationPreference.objects.create(user=user)
             username = form.cleaned_data.get('username')
             logger.info("New user registered: %s", username)
             messages.success(request, f'Account created for {username}! You can now login.')
@@ -1082,6 +1087,47 @@ def _build_watchlist_with_pl(watchlist):
 
 
 @login_required
+def unicorn_watchlist(request):
+    """Dedicated watchlist page with full data including sector/industry."""
+    watched = WatchedUnicorn.objects.filter(user=request.user).order_by('-added_at')
+    watchlist = _build_watchlist_with_pl(watched)
+
+    # Fetch sector/industry info via yfinance for all watched tickers
+    tickers = [w.ticker for w in watched if w.ticker]
+    if tickers:
+        try:
+            import yfinance as yf
+            ticker_objects = yf.Tickers(' '.join(tickers))
+            info_map = {}
+            for t in tickers:
+                try:
+                    info = ticker_objects.tickers[t].info
+                    info_map[t] = {
+                        'sector': info.get('sector', ''),
+                        'industry': info.get('industry', ''),
+                        'quote_type': info.get('quoteType', ''),
+                    }
+                except Exception:
+                    info_map[t] = {'sector': '', 'industry': '', 'quote_type': ''}
+            # Merge into watchlist items
+            for item in watchlist:
+                extra = info_map.get(item['ticker'], {})
+                item['sector'] = extra.get('sector', '')
+                item['industry'] = extra.get('industry', '')
+                item['quote_type'] = extra.get('quote_type', '')
+        except Exception as e:
+            logger.warning("Failed to fetch yfinance info for watchlist: %s", e)
+            for item in watchlist:
+                item['sector'] = ''
+                item['industry'] = ''
+                item['quote_type'] = ''
+
+    return render(request, 'SmartVest/unicorn_watchlist.html', {
+        'watchlist': watchlist,
+    })
+
+
+@login_required
 @require_POST
 def add_to_watchlist(request, ticker):
     """Add a stock to user's unicorn watchlist. Requires POST."""
@@ -1412,3 +1458,215 @@ def backtest_runner_status(request):
         'running': False,
         'done_count': done_count,
     })
+
+
+# ============================================================================
+# NOTIFICATIONS
+# ============================================================================
+
+@login_required
+def notifications_list(request):
+    """Return recent notifications as JSON for the bell dropdown."""
+    notifications = Notification.objects.filter(user=request.user)[:20]
+    data = [{
+        'id': n.id,
+        'type': n.notification_type,
+        'title': n.title,
+        'message': n.message,
+        'link': n.link,
+        'is_read': n.is_read,
+        'created_at': n.created_at.strftime('%b %d, %H:%M'),
+    } for n in notifications]
+    unread = Notification.objects.filter(user=request.user, is_read=False).count()
+    return JsonResponse({'notifications': data, 'unread_count': unread})
+
+
+@login_required
+@require_POST
+def notifications_mark_read(request):
+    """Mark all notifications as read."""
+    Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
+    return JsonResponse({'success': True})
+
+
+@login_required
+@require_POST
+def notification_mark_read(request, pk):
+    """Mark a single notification as read."""
+    Notification.objects.filter(pk=pk, user=request.user).update(is_read=True)
+    return JsonResponse({'success': True})
+
+
+@login_required
+def notification_preferences(request):
+    """View/edit notification preferences."""
+    prefs, _ = NotificationPreference.objects.get_or_create(user=request.user)
+    if request.method == 'POST':
+        form = NotificationPreferenceForm(request.POST, instance=prefs)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Notification preferences updated.')
+            return redirect('notification-preferences')
+    else:
+        form = NotificationPreferenceForm(instance=prefs)
+    return render(request, 'SmartVest/notification_preferences.html', {'form': form})
+
+
+@login_required
+@require_POST
+def run_alert_scan(request):
+    """Manually trigger all alert checks for the current user."""
+    import threading
+    from .tasks import check_price_alerts, check_portfolio_alerts
+
+    def _run_checks():
+        try:
+            # Run price alerts (skip market-hours check for manual trigger)
+            _run_price_alerts_for_user(request.user)
+            # Run portfolio alerts for this user
+            _run_portfolio_alerts_for_user(request.user)
+        except Exception:
+            logger.exception("Error in manual alert scan")
+
+    def _run_price_alerts_for_user(user):
+        """Price alert check scoped to a single user."""
+        from .models import PriceAlert, WatchedUnicorn, NotificationPreference
+        from .utils import fetch_prices_cached
+        from .notifications import send_notification
+        from datetime import date
+
+        tickers = set()
+        active_alerts = PriceAlert.objects.filter(user=user, is_triggered=False)
+        watched_with_targets = WatchedUnicorn.objects.filter(user=user, target_price__isnull=False)
+        all_watched = WatchedUnicorn.objects.filter(user=user, entry_price__isnull=False)
+
+        for a in active_alerts:
+            tickers.add(a.ticker)
+        for w in watched_with_targets:
+            tickers.add(w.ticker)
+        for w in all_watched:
+            tickers.add(w.ticker)
+
+        if not tickers:
+            return
+
+        current_prices, prev_closes = fetch_prices_cached(tickers)
+
+        # Check explicit PriceAlert targets
+        triggered = []
+        for alert in active_alerts:
+            curr = current_prices.get(alert.ticker)
+            if curr is None:
+                continue
+            hit = False
+            if alert.direction == PriceAlert.Direction.ABOVE and curr >= float(alert.target_price):
+                hit = True
+            elif alert.direction == PriceAlert.Direction.BELOW and curr <= float(alert.target_price):
+                hit = True
+            if hit:
+                alert.is_triggered = True
+                alert.triggered_at = timezone.now()
+                triggered.append(alert)
+                direction_label = "rose above" if alert.direction == PriceAlert.Direction.ABOVE else "dropped below"
+                send_notification(user, Notification.Type.PRICE_ALERT,
+                    f"{alert.ticker} {direction_label} ${alert.target_price}",
+                    f"{alert.ticker} is now at ${curr:.2f} (target: ${alert.target_price}).",
+                    "/unicorns/watchlist/")
+        if triggered:
+            PriceAlert.objects.bulk_update(triggered, ['is_triggered', 'triggered_at'])
+
+        # Check watchlist targets
+        for w in watched_with_targets:
+            curr = current_prices.get(w.ticker)
+            if curr and curr >= float(w.target_price):
+                dedup = f"sv_alert_sent_{user.id}_{w.ticker}_{date.today().isoformat()}"
+                if not cache.get(dedup):
+                    send_notification(user, Notification.Type.PRICE_ALERT,
+                        f"{w.ticker} hit target ${float(w.target_price):.2f}",
+                        f"{w.ticker} reached ${curr:.2f} (your target: ${float(w.target_price):.2f}).",
+                        "/unicorns/watchlist/")
+                    cache.set(dedup, True, timeout=86400)
+
+        # Check daily % moves
+        prefs, _ = NotificationPreference.objects.get_or_create(user=user)
+        threshold = float(prefs.price_change_threshold)
+        for w in all_watched:
+            curr = current_prices.get(w.ticker)
+            prev = prev_closes.get(w.ticker)
+            if not curr or not prev or prev == 0:
+                continue
+            dedup = f"sv_alert_sent_{user.id}_{w.ticker}_{date.today().isoformat()}"
+            if cache.get(dedup):
+                continue
+            daily_pct = abs((curr - prev) / prev) * 100
+            if daily_pct >= threshold:
+                direction = "up" if curr > prev else "down"
+                send_notification(user, Notification.Type.PRICE_ALERT,
+                    f"{w.ticker} {direction} {daily_pct:.1f}% today",
+                    f"{w.ticker} moved from ${prev:.2f} to ${curr:.2f}.",
+                    "/unicorns/watchlist/")
+                cache.set(dedup, True, timeout=86400)
+
+    def _run_portfolio_alerts_for_user(user):
+        """Portfolio alert check scoped to a single user."""
+        from .models import SavedPortfolio, NotificationPreference
+        from .utils import get_portfolio_performance
+        from .notifications import send_notification
+        from datetime import date
+
+        prefs, _ = NotificationPreference.objects.get_or_create(user=user)
+        if not prefs.portfolio_alerts_enabled:
+            return
+
+        portfolios = list(SavedPortfolio.objects.filter(user=user))
+        if not portfolios:
+            return
+
+        try:
+            perf_data = get_portfolio_performance(portfolios)
+        except Exception:
+            return
+
+        threshold = float(prefs.portfolio_drawdown_threshold)
+        for perf in perf_data:
+            portfolio = perf['portfolio']
+            return_pct = perf['return_pct']
+            if return_pct <= -threshold:
+                send_notification(user, Notification.Type.PORTFOLIO_ALERT,
+                    f"{portfolio.name} down {abs(return_pct):.1f}%",
+                    f"Portfolio '{portfolio.name}' has lost ${abs(perf['profit_loss']):.2f} ({return_pct:.1f}%).",
+                    f"/portfolios/{portfolio.pk}/")
+            elif return_pct >= 20:
+                send_notification(user, Notification.Type.PORTFOLIO_ALERT,
+                    f"{portfolio.name} up {return_pct:.1f}%!",
+                    f"Portfolio '{portfolio.name}' has gained ${perf['profit_loss']:.2f} (+{return_pct:.1f}%).",
+                    f"/portfolios/{portfolio.pk}/")
+
+    # Run in background thread so the response is instant
+    threading.Thread(target=_run_checks, daemon=True).start()
+    return JsonResponse({'success': True, 'message': 'Alert scan started'})
+
+
+# ============================================================================
+# PORTFOLIO HEALTH CHECK
+# ============================================================================
+
+@login_required
+def portfolio_health(request, pk):
+    """Portfolio health check page (template shell — results fetched via AJAX)."""
+    portfolio = get_object_or_404(SavedPortfolio, pk=pk, user=request.user)
+    return render(request, 'SmartVest/portfolio_health.html', {'portfolio': portfolio})
+
+
+@login_required
+def portfolio_health_api(request, pk):
+    """API: Run health check analysis and return JSON."""
+    portfolio = get_object_or_404(SavedPortfolio, pk=pk, user=request.user)
+
+    # Allow cache bypass via ?refresh=1
+    if request.GET.get('refresh'):
+        cache.delete(f"sv_health_{portfolio.pk}")
+
+    from .rebalance import portfolio_health_check
+    results = portfolio_health_check(portfolio)
+    return JsonResponse(results)

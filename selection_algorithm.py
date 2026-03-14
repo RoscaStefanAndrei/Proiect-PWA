@@ -570,6 +570,133 @@ def filtreaza_puterea_industriei(df_companii_pasul_4):
     return df_final_filtrat.reset_index(drop=True)
 
 
+def filtreaza_momentum_negativ(tickere_de_filtrat):
+    """
+    A3: Exclude stocks where BOTH 1-month AND 3-month returns are negative.
+    Removes 'falling knives' — stocks in sustained decline on multiple timeframes.
+    """
+    if not tickere_de_filtrat:
+        return []
+
+    print(f"\n===== FILTRU A3: Momentum negativ ({len(tickere_de_filtrat)} tickere) =====")
+
+    end_date = datetime.date.today()
+    start_date = end_date - datetime.timedelta(days=100)  # ~63 trading days
+
+    try:
+        data = yf.download(tickere_de_filtrat, start=start_date, end=end_date)["Close"]
+        if data.empty:
+            print("  -> Nu s-au putut descărca datele. Se păstrează toate tickerele.")
+            return tickere_de_filtrat
+    except Exception as e:
+        print(f"  -> Eroare la descărcare: {e}. Se păstrează toate tickerele.")
+        return tickere_de_filtrat
+
+    survivors = []
+    for ticker in tickere_de_filtrat:
+        try:
+            if len(tickere_de_filtrat) > 1:
+                col = data[ticker].dropna()
+            else:
+                col = data.dropna()
+
+            if len(col) < 21:
+                survivors.append(ticker)
+                continue
+
+            price_now = col.iloc[-1]
+            price_1m = col.iloc[-21] if len(col) >= 21 else price_now
+            price_3m = col.iloc[-63] if len(col) >= 63 else col.iloc[0]
+
+            ret_1m = (price_now / price_1m) - 1 if price_1m > 0 else 0
+            ret_3m = (price_now / price_3m) - 1 if price_3m > 0 else 0
+
+            if ret_1m < 0 and ret_3m < 0:
+                print(f"  -> {ticker}: ELIMINAT (1M: {ret_1m:.2%}, 3M: {ret_3m:.2%})")
+            else:
+                survivors.append(ticker)
+        except Exception:
+            survivors.append(ticker)
+
+    print(f"  -> {len(survivors)}/{len(tickere_de_filtrat)} au trecut filtrul de momentum.")
+    return survivors
+
+
+def filtreaza_volatilitate(tickere_de_filtrat, vol_cap=0.60):
+    """
+    A4: Exclude stocks with annualized volatility above vol_cap (default 60%).
+    Applied to Conservative and Balanced profiles only (not Aggressive).
+    """
+    if not tickere_de_filtrat:
+        return []
+
+    print(f"\n===== FILTRU A4: Volatilitate (cap={vol_cap:.0%}, {len(tickere_de_filtrat)} tickere) =====")
+
+    end_date = datetime.date.today()
+    start_date = end_date - datetime.timedelta(days=400)  # ~252 trading days
+
+    try:
+        data = yf.download(tickere_de_filtrat, start=start_date, end=end_date)["Close"]
+        if data.empty:
+            print("  -> Nu s-au putut descărca datele. Se păstrează toate tickerele.")
+            return tickere_de_filtrat
+    except Exception as e:
+        print(f"  -> Eroare la descărcare: {e}. Se păstrează toate tickerele.")
+        return tickere_de_filtrat
+
+    survivors = []
+    for ticker in tickere_de_filtrat:
+        try:
+            if len(tickere_de_filtrat) > 1:
+                col = data[ticker].dropna()
+            else:
+                col = data.dropna()
+
+            if len(col) < 60:
+                survivors.append(ticker)
+                continue
+
+            daily_returns = col.pct_change().dropna().tail(252)
+            if len(daily_returns) < 30:
+                survivors.append(ticker)
+                continue
+
+            ann_vol = daily_returns.std() * (252 ** 0.5)
+
+            if ann_vol > vol_cap:
+                print(f"  -> {ticker}: ELIMINAT (vol anualizată: {ann_vol:.2%} > {vol_cap:.0%})")
+            else:
+                survivors.append(ticker)
+        except Exception:
+            survivors.append(ticker)
+
+    print(f"  -> {len(survivors)}/{len(tickere_de_filtrat)} au trecut filtrul de volatilitate.")
+    return survivors
+
+
+def get_dynamic_megacap_tech():
+    """
+    Dynamically identify mega-cap tech stocks ($200B+) from Technology
+    and Communication Services sectors using Finviz.
+    Returns a list of tickers ranked by market cap.
+    """
+    try:
+        screener = Overview()
+        screener.set_filter(filters_dict={
+            "Market Cap.": "Mega ($200bln and more)",
+        })
+        df = screener.screener_view(verbose=0)
+        if df is not None and not df.empty:
+            tech_sectors = ['Technology', 'Communication Services']
+            tech_df = df[df['Sector'].isin(tech_sectors)]
+            tickers = tech_df['Ticker'].tolist()
+            print(f"  -> Mega-cap tech dinamic: {len(tickers)} tickere identificate")
+            return tickers
+    except Exception as e:
+        print(f"  -> Warning: Nu s-au putut obține mega-cap tech tickers: {e}")
+    return []
+
+
 def aplica_reguli_redistribuire(weights_dict, min_prag=0.02, max_prag=0.70):
     """
     Aplică regulile de business pe alocările brute:
@@ -631,11 +758,13 @@ def calculeaza_portofoliu(tickere_finale, profile_type="balanced"):
     PASUL 6: Calculează alocarea optimă a portofoliului în funcție de profilul investitorului.
 
     Strategii:
-    - Conservative: Global Minimum Variance (GMV) — minimizează volatilitatea
-    - Balanced: Max Sharpe Ratio cu fallback GMV — cel mai bun raport risc/randament
-    - Aggressive: Max Sharpe Ratio — maximizează randamentul ajustat la risc
+    - Conservative: Global Minimum Variance (GMV), weight bounds 2%-12%,
+                    20% momentum tilt
+    - Balanced: Max Sharpe Ratio cu fallback GMV, weight bounds 5%-15%,
+                40% momentum tilt
+    - Aggressive: Top 10 Momentum Equal Weight (bypasses PyPortfolioOpt)
 
-    Post-procesare: regulile de 2% (min) și 70% (max) per acțiune.
+    Synchronized with backtest_selection_algorithm.py for consistent behavior.
     """
     print(f"\n===== PASUL 6: Optimizare Portofoliu ({profile_type.upper()}) =====")
 
@@ -669,7 +798,11 @@ def calculeaza_portofoliu(tickere_finale, profile_type="balanced"):
         print(f"Eroare la descărcarea datelor istorice: {e}")
         return None
 
-    # 2. Calcularea Matricei de Covarianță (din prețuri — pypfopt calculează intern randamentele)
+    # If only 1 ticker, return 100% allocation
+    if df_preturi.shape[1] == 1:
+        return {df_preturi.columns[0]: 1.0}
+
+    # 2. Calcularea Matricei de Covarianță
     print("  -> Se calculează Matricea de Covarianță (Ledoit-Wolf Shrinkage)...")
     try:
         S = risk_models.CovarianceShrinkage(df_preturi).ledoit_wolf()
@@ -692,22 +825,30 @@ def calculeaza_portofoliu(tickere_finale, profile_type="balanced"):
             return None
 
     elif profile_type == "aggressive":
-        # Max Sharpe: Maximizare randament ajustat la risc
-        print("  -> Strategie: Max Sharpe Ratio")
-        try:
-            mu = expected_returns.mean_historical_return(df_preturi)
-            ef = EfficientFrontier(mu, S, weight_bounds=(0, 1))
-            ef.max_sharpe()
-            alocari_brute = ef.clean_weights()
-        except Exception as e:
-            print(f"  -> Max Sharpe a eșuat ({e}). Fallback: GMV.")
-            try:
-                ef = EfficientFrontier(None, S, weight_bounds=(0, 1))
-                ef.min_volatility()
-                alocari_brute = ef.clean_weights()
-            except Exception as e2:
-                print(f"  -> Eroare la fallback GMV: {e2}")
-                return None
+        # Top 10 Momentum Equal Weight — bypass PyPortfolioOpt
+        print("  -> Strategie: Top 10 Momentum Equal Weight")
+        available = [t for t in tickere_finale if t in df_preturi.columns]
+        momentum_scores = {}
+        for ticker in available:
+            col = df_preturi[ticker].dropna()
+            if len(col) >= 63:  # ~3 months
+                momentum_scores[ticker] = (col.iloc[-1] / col.iloc[-63]) - 1
+            else:
+                momentum_scores[ticker] = -999
+
+        top_momentum = sorted(
+            [t for t in momentum_scores if momentum_scores[t] != -999],
+            key=lambda t: momentum_scores[t],
+            reverse=True
+        )[:10]
+
+        if top_momentum:
+            weight = 1.0 / len(top_momentum)
+            alocari_brute = {ticker: weight for ticker in top_momentum}
+            print(f"  -> Top {len(top_momentum)} by momentum: {top_momentum}")
+        else:
+            print("  -> Nu s-au putut calcula scorurile de momentum.")
+            return None
 
     else:  # balanced
         # Max Sharpe cu fallback GMV
@@ -733,19 +874,68 @@ def calculeaza_portofoliu(tickere_finale, profile_type="balanced"):
         print("  -> Optimizarea nu a produs rezultate.")
         return None
 
-    # 4. Post-procesare: regulile de business (2% min, 70% max)
-    print(
-        "  -> Se aplică regulile de redistribuire (eliminare < 2%, plafonare > 70%)..."
-    )
-    alocari_finale = aplica_reguli_redistribuire(
-        alocari_brute, min_prag=0.02, max_prag=0.70
-    )
+    # 4. Post-procesare cu reguli specifice per profil
+    if profile_type == "aggressive":
+        # Aggressive: already Top 10 Equal Weight, no further redistribution
+        alocari_finale = alocari_brute
+    else:
+        # Profile-specific weight bounds (synced with backtest)
+        if profile_type == "conservative":
+            min_cap = 0.02
+            max_cap = 0.12
+        else:  # balanced
+            min_cap = 0.05
+            max_cap = 0.15
+
+        print(f"  -> Se aplică regulile de redistribuire (min {min_cap:.0%}, max {max_cap:.0%})...")
+        alocari_finale = aplica_reguli_redistribuire(
+            alocari_brute, min_prag=min_cap, max_prag=max_cap
+        )
+
+        # Momentum-weighted tilt (synced with backtest)
+        mom_blend = {'conservative': 0.20, 'balanced': 0.40}
+        mom_pct = mom_blend.get(profile_type, 0.40)
+
+        momentum_scores = {}
+        for ticker in alocari_finale:
+            if ticker in df_preturi.columns:
+                col = df_preturi[ticker].dropna()
+                if len(col) >= 63:
+                    ret_3m = (col.iloc[-1] / col.iloc[-63]) - 1
+                    momentum_scores[ticker] = max(0, ret_3m)
+                else:
+                    momentum_scores[ticker] = 0
+            else:
+                momentum_scores[ticker] = 0
+
+        total_momentum = sum(momentum_scores.values())
+        if total_momentum > 0:
+            print(f"  -> Momentum tilt: {mom_pct:.0%} blend")
+            for ticker in alocari_finale:
+                mom_weight = momentum_scores[ticker] / total_momentum
+                alocari_finale[ticker] = (1 - mom_pct) * alocari_finale[ticker] + mom_pct * mom_weight
+
+            # Renormalize
+            total_w = sum(alocari_finale.values())
+            if total_w > 0:
+                alocari_finale = {k: v/total_w for k, v in alocari_finale.items()}
+
+            # Re-apply caps after momentum tilt
+            alocari_finale = aplica_reguli_redistribuire(
+                alocari_finale, min_prag=0.02, max_prag=max_cap
+            )
+
+    # Remove zero allocations
+    alocari_finale = {k: v for k, v in alocari_finale.items() if v > 0}
+
+    if not alocari_finale:
+        return None
 
     # 5. Afișarea Rezultatelor
     strategy_name = {
-        "conservative": "GMV (Risc Minim)",
-        "balanced": "Max Sharpe / GMV",
-        "aggressive": "Max Sharpe (Randament Maxim)",
+        "conservative": "GMV (Risc Minim, 2%-12%)",
+        "balanced": "Max Sharpe / GMV (5%-15%, 40% Momentum)",
+        "aggressive": "Top 10 Momentum Equal Weight",
     }.get(profile_type, profile_type)
 
     print(f"\n=== REZULTAT: ALOCARE PORTOFOLIU — {strategy_name} ===")
@@ -756,7 +946,7 @@ def calculeaza_portofoliu(tickere_finale, profile_type="balanced"):
     print("\nProcentaj de investit în fiecare acțiune:")
     print(alocari_reale.apply(lambda x: f"{x*100:.2f}%").to_string())
 
-    # 6. Vizualizare Pie Chart (salvat în fișier pentru compatibilitate server)
+    # 6. Vizualizare Pie Chart
     try:
         plt.figure(figsize=(9, 9))
         plt.pie(
@@ -771,7 +961,7 @@ def calculeaza_portofoliu(tickere_finale, profile_type="balanced"):
         fig = plt.gcf()
         fig.gca().add_artist(centre_circle)
 
-        plt.title(f"Alocare Portofoliu — {strategy_name}\n(Min 2%, Max 70%)")
+        plt.title(f"Alocare Portofoliu — {strategy_name}")
         plt.tight_layout()
         plt.savefig("portofoliu_chart.png", dpi=150, bbox_inches="tight")
         plt.close()
@@ -930,14 +1120,36 @@ def run_full_pipeline(profile_type="balanced", budget=10000.0, filters_dict=None
     df_companii_filtrate.to_csv("pasul_2_companii_fundamentale.csv", index=False)
     result['companii_filtrate'] = df_companii_filtrate
 
-    # --- PASUL 3: ANALIZA PUTERII RELATIVE (vs. SPY) ---
+    # --- FILTRU A3: MOMENTUM NEGATIV ---
+    tickere_de_analizat = df_companii_filtrate["Ticker"].tolist()
+    tickere_post_momentum = filtreaza_momentum_negativ(tickere_de_analizat)
+
+    if not tickere_post_momentum:
+        print("  -> A3: Toate tickerele eliminate. Se continuă cu lista originală.")
+        tickere_post_momentum = tickere_de_analizat
+
+    # --- FILTRU A4: VOLATILITATE (doar Conservative și Balanced) ---
+    if profile_type != "aggressive":
+        tickere_post_vol = filtreaza_volatilitate(tickere_post_momentum, vol_cap=0.60)
+        if not tickere_post_vol:
+            print("  -> A4: Toate tickerele eliminate. Se continuă cu lista post-momentum.")
+            tickere_post_vol = tickere_post_momentum
+    else:
+        tickere_post_vol = tickere_post_momentum
+
+    # Update df to reflect A3+A4 filtering
+    df_companii_filtrate = df_companii_filtrate[
+        df_companii_filtrate["Ticker"].isin(tickere_post_vol)
+    ]
+    print(f"\n===== REZUMAT A3+A4: {len(df_companii_filtrate)} COMPANII DUPĂ FILTRE SUPLIMENTARE =====")
+
+    # --- PASUL 3: ANALIZA PUTERII RELATIVE (vs. SPY) — graceful fallback ---
     tickere_de_analizat = df_companii_filtrate["Ticker"].tolist()
     lista_tickere_puternice = compara_cu_piata(tickere_de_analizat)
 
     if not lista_tickere_puternice:
-        result['error'] = "Pasul 3 (Putere Relativă) a eliminat toate companiile."
-        print(f"\n{result['error']}")
-        return result
+        print(f"  -> Pasul 3: Niciun ticker nu a supraperformat SPY. Se continuă cu {len(tickere_de_analizat)} din Pasul 2.")
+        lista_tickere_puternice = tickere_de_analizat
 
     df_companii_puternice = df_companii_filtrate[
         df_companii_filtrate["Ticker"].isin(lista_tickere_puternice)
@@ -945,13 +1157,12 @@ def run_full_pipeline(profile_type="balanced", budget=10000.0, filters_dict=None
     print(f"\n===== REZUMAT PASUL 3: {len(df_companii_puternice)} SUPRAPERFORMAT SPY =====")
     df_companii_puternice.to_csv("pasul_3_companii_putere_relativa.csv", index=False)
 
-    # --- PASUL 4: ANALIZA OBV ---
+    # --- PASUL 4: ANALIZA OBV — graceful fallback ---
     lista_tickere_obv = filtreaza_obv(lista_tickere_puternice)
 
     if not lista_tickere_obv:
-        result['error'] = "Pasul 4 (OBV) a eliminat toate companiile."
-        print(f"\n{result['error']}")
-        return result
+        print(f"  -> Pasul 4: Niciun ticker nu a trecut OBV. Se continuă cu {len(lista_tickere_puternice)} din Pasul 3.")
+        lista_tickere_obv = lista_tickere_puternice
 
     df_companii_obv = df_companii_puternice[
         df_companii_puternice["Ticker"].isin(lista_tickere_obv)
@@ -959,7 +1170,7 @@ def run_full_pipeline(profile_type="balanced", budget=10000.0, filters_dict=None
     print(f"\n===== REZUMAT PASUL 4: {len(df_companii_obv)} AU TRECUT FILTRUL OBV =====")
     df_companii_obv.to_csv("pasul_4_companii_obv.csv", index=False)
 
-    # --- PASUL 5: FILTRAREA PUTERII INDUSTRIEI ---
+    # --- PASUL 5: FILTRAREA PUTERII INDUSTRIEI — graceful fallback ---
     if skip_industry_filter:
         print("\n===== PASUL 5: SKIPPED (skip_industry_filter=True) =====")
         df_companii_finale = df_companii_obv
@@ -967,11 +1178,10 @@ def run_full_pipeline(profile_type="balanced", budget=10000.0, filters_dict=None
         df_companii_finale = filtreaza_puterea_industriei(df_companii_obv)
 
         if df_companii_finale.empty:
-            result['error'] = "Pasul 5 (Puterea Industriei) a eliminat toate companiile."
-            print(f"\n{result['error']}")
-            return result
-
-        print(f"\n===== REZUMAT PASUL 5: {len(df_companii_finale)} COMPANII SELECTATE =====")
+            print(f"  -> Pasul 5: Nicio industrie puternică. Se continuă cu {len(df_companii_obv)} din Pasul 4.")
+            df_companii_finale = df_companii_obv
+        else:
+            print(f"\n===== REZUMAT PASUL 5: {len(df_companii_finale)} COMPANII SELECTATE =====")
 
     coloane_de_afisat = ["Ticker", "Company", "Sector", "Industry", "Price", "Change"]
     coloane_existente = [
@@ -991,6 +1201,110 @@ def run_full_pipeline(profile_type="balanced", budget=10000.0, filters_dict=None
         result['error'] = "Pasul 6 (Optimizare) a eșuat."
         print(f"\n{result['error']}")
         return result
+
+    # --- DYNAMIC MEGA-CAP TECH OVERRIDE ---
+    # In bull markets, inject top mega-cap tech stocks to capture sector momentum.
+    # Dynamically identified from Finviz (not hardcoded).
+    TECH_ALLOC = {'conservative': 0.10, 'balanced': 0.20, 'aggressive': 0.15}
+    tech_pct = TECH_ALLOC.get(profile_type, 0.0)
+
+    if tech_pct > 0:
+        try:
+            # Check bull market: SPY > SMA200
+            spy_data = yf.download("SPY", period="1y")["Close"]
+            if not spy_data.empty and len(spy_data) >= 200:
+                spy_current = spy_data.iloc[-1]
+                spy_sma200 = spy_data.tail(200).mean()
+
+                if spy_current > spy_sma200:
+                    print(f"\n  -> Bull market detectat (SPY > SMA200). Se aplică mega-cap tech override.")
+                    megacap_tickers = get_dynamic_megacap_tech()
+
+                    if megacap_tickers:
+                        # Get 6M momentum for mega-cap tickers
+                        tech_price = yf.download(megacap_tickers, period="7mo")["Close"]
+                        tech_momentum = {}
+                        for ticker in megacap_tickers:
+                            try:
+                                col = tech_price[ticker].dropna() if len(megacap_tickers) > 1 else tech_price.dropna()
+                                if len(col) >= 126:
+                                    tech_momentum[ticker] = (col.iloc[-1] / col.iloc[-126]) - 1
+                            except Exception:
+                                pass
+
+                        if tech_momentum:
+                            n_tech = 2 if profile_type == 'conservative' else 3
+                            # Only consider positive momentum
+                            positive_tech = {k: v for k, v in tech_momentum.items() if v > 0}
+                            top_tech = sorted(positive_tech, key=positive_tech.get, reverse=True)[:n_tech]
+
+                            if top_tech:
+                                tech_weight_each = tech_pct / len(top_tech)
+                                scale_factor = 1.0 - tech_pct
+                                alocari = {k: v * scale_factor for k, v in alocari.items()}
+
+                                for t in top_tech:
+                                    if t in alocari:
+                                        alocari[t] += tech_weight_each
+                                    else:
+                                        alocari[t] = tech_weight_each
+
+                                print(f"  -> Mega-Cap Tech Override: {top_tech} @ {tech_pct*100:.0f}%")
+        except Exception as e:
+            print(f"  -> Warning: Mega-cap override a eșuat: {e}")
+
+    # --- MINIMUM 8 STOCKS ENFORCEMENT ---
+    MIN_STOCKS = 8
+    if alocari and len(alocari) < MIN_STOCKS and len(lista_tickere_finale) >= MIN_STOCKS:
+        print(f"\n  -> Doar {len(alocari)} stocuri. Se forțează {MIN_STOCKS}+ cu pondere egală.")
+        top_tickers = lista_tickere_finale[:MIN_STOCKS]
+        equal_weight = 1.0 / len(top_tickers)
+        alocari = {t: equal_weight for t in top_tickers}
+    elif alocari and len(alocari) < MIN_STOCKS:
+        if len(lista_tickere_finale) > len(alocari):
+            equal_weight = 1.0 / len(lista_tickere_finale)
+            alocari = {t: equal_weight for t in lista_tickere_finale}
+
+    # --- SECTOR EXPOSURE CAP: MAX 30% PER SECTOR ---
+    if alocari and 'Sector' in df_companii_finale.columns:
+        ticker_sector = dict(zip(df_companii_finale['Ticker'], df_companii_finale['Sector']))
+        sector_totals = {}
+        for ticker, weight in alocari.items():
+            sec = ticker_sector.get(ticker, 'Unknown')
+            sector_totals[sec] = sector_totals.get(sec, 0) + weight
+
+        if any(v > 0.30 for v in sector_totals.values()):
+            print(f"\n  -> Sector cap 30%: se rebalansează...")
+            for _ in range(5):
+                excess = 0
+                for sec, total in sector_totals.items():
+                    if total > 0.30:
+                        scale = 0.30 / total
+                        for ticker in list(alocari.keys()):
+                            if ticker_sector.get(ticker, 'Unknown') == sec:
+                                old_w = alocari[ticker]
+                                alocari[ticker] = old_w * scale
+                                excess += old_w - alocari[ticker]
+
+                if excess > 0.001:
+                    uncapped = [t for t, w in alocari.items()
+                                if sector_totals.get(ticker_sector.get(t, 'Unknown'), 0) <= 0.30]
+                    if uncapped:
+                        uncapped_total = sum(alocari[t] for t in uncapped)
+                        if uncapped_total > 0:
+                            for t in uncapped:
+                                alocari[t] += (alocari[t] / uncapped_total) * excess
+
+                # Recalculate
+                sector_totals = {}
+                for ticker, weight in alocari.items():
+                    sec = ticker_sector.get(ticker, 'Unknown')
+                    sector_totals[sec] = sector_totals.get(sec, 0) + weight
+
+                if all(v <= 0.301 for v in sector_totals.values()):
+                    break
+
+            print(f"  -> Sector cap aplicat. Max sector: {max(sector_totals.values()):.1%}")
 
     result['alocari'] = alocari
 

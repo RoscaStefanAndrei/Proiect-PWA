@@ -160,8 +160,8 @@
                     {% for h in perf.holdings %}
                     <tr>
                         <td class="fw-bold" style="color: var(--accent);">{{ h.ticker }}</td>
-                        <td style="color: var(--text-muted); font-size: 0.78rem;">{{ h.sector }}</td>
-                        <td style="color: var(--text-muted); font-size: 0.78rem;">{{ h.industry }}</td>
+                        <td style="color: var(--text-primary); font-size: 0.82rem;">{{ h.sector }}</td>
+                        <td style="color: var(--text-secondary); font-size: 0.82rem;">{{ h.industry }}</td>
                         <td class="text-center">
                             {% if h.asset_type == 'ETF' %}
                                 <span class="badge" style="background: rgba(6,182,212,0.15); color: #06b6d4;">ETF</span>
@@ -214,6 +214,9 @@
 <div class="d-flex gap-2 mb-4">
     <a href="{% url 'portfolio-list' %}" class="btn btn-outline-light rounded-pill px-3" style="font-size:0.85rem;">
         <i class="fas fa-arrow-left me-1"></i>Back
+    </a>
+    <a href="{% url 'portfolio-health' object.pk %}" class="btn rounded-pill px-3" style="font-size:0.85rem;background:var(--accent-subtle);color:var(--accent);border:1px solid var(--accent);">
+        <i class="fas fa-heartbeat me-1"></i>Health Check
     </a>
     <a href="{% url 'portfolio-delete' object.id %}" class="btn btn-outline-danger rounded-pill px-3" style="font-size:0.85rem;">
         <i class="fas fa-trash-alt me-1"></i>Delete

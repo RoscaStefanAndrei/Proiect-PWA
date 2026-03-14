@@ -60,8 +60,14 @@
                 <a href="{% url 'unicorn-scanner' %}" class="sidebar-link {% if request.resolver_match.url_name == 'unicorn-scanner' %}active{% endif %}">
                     <i class="fas fa-horse-head"></i>Unicorn Scanner
                 </a>
+                <a href="{% url 'unicorn-watchlist' %}" class="sidebar-link {% if request.resolver_match.url_name == 'unicorn-watchlist' %}active{% endif %}">
+                    <i class="fas fa-binoculars"></i>Unicorn Watchlist
+                </a>
                 <a href="{% url 'presets-list' %}" class="sidebar-link {% if request.resolver_match.url_name == 'presets-list' %}active{% endif %}">
                     <i class="fas fa-bookmark"></i>Saved Presets
+                </a>
+                <a href="{% url 'notification-preferences' %}" class="sidebar-link {% if request.resolver_match.url_name == 'notification-preferences' %}active{% endif %}">
+                    <i class="fas fa-bell"></i>Notifications
                 </a>
 
                 {% if user.is_superuser %}
@@ -108,7 +114,24 @@
                     <h1 class="page-title">{% block header_title %}Dashboard{% endblock %}</h1>
                 </div>
 
-                <a href="{% url 'profile' %}" class="user-pill text-decoration-none">
+                <div class="d-flex align-items-center gap-3">
+                    <!-- Notification Bell -->
+                    <div class="notification-bell-wrapper">
+                        <button class="notif-bell-btn" id="notifBell" type="button">
+                            <i class="fas fa-bell"></i>
+                            <span id="notifBadge" class="notif-badge"
+                                  {% if not unread_count %}style="display:none;"{% endif %}>
+                                {{ unread_count|default:"0" }}
+                            </span>
+                        </button>
+                        <div class="notif-dropdown" id="notifDropdown">
+                            <div class="p-3 text-center" style="color: var(--text-muted); font-size: 0.85rem;">
+                                Loading...
+                            </div>
+                        </div>
+                    </div>
+
+                    <a href="{% url 'profile' %}" class="user-pill text-decoration-none">
                     <div class="text-end d-none d-md-block">
                         <span class="user-pill-name d-block">{{ user.username }}</span>
                         <span class="user-pill-label">Personal</span>
@@ -123,6 +146,7 @@
                     </div>
                     {% endif %}
                 </a>
+                </div>
             </div>
             {% else %}
             <nav class="py-4 px-4" style="border-bottom: 1px solid var(--border-color);">
@@ -214,6 +238,9 @@
             });
         }
     </script>
+    {% if user.is_authenticated %}
+    <script src="/static/js/notifications.js"></script>
+    {% endif %}
     {% block extra_js %}{% endblock %}
 </body>
 

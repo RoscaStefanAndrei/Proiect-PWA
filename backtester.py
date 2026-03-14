@@ -354,6 +354,9 @@ class HistoricalDataManager:
                                 ('Common Stock Equity', 'stockholdersEquity'),
                                 ('Total Debt', 'totalDebt'),
                                 ('Long Term Debt', 'totalDebt'),
+                                ('Ordinary Shares Number', 'commonStockSharesOutstanding'),
+                                ('Share Issued', 'commonStockSharesOutstanding'),
+                                ('Common Stock Shares Outstanding', 'commonStockSharesOutstanding'),
                             ]:
                                 if key not in report and row_name in qb.index:
                                     val = qb.loc[row_name, col_date]
@@ -435,6 +438,9 @@ class HistoricalDataManager:
                                     ('Common Stock Equity', 'stockholdersEquity'),
                                     ('Total Debt', 'totalDebt'),
                                     ('Long Term Debt', 'totalDebt'),
+                                    ('Ordinary Shares Number', 'commonStockSharesOutstanding'),
+                                    ('Share Issued', 'commonStockSharesOutstanding'),
+                                    ('Common Stock Shares Outstanding', 'commonStockSharesOutstanding'),
                                 ]:
                                     if key not in report and row_name in qb.index:
                                         val = qb.loc[row_name, col_date]
@@ -550,18 +556,8 @@ class HistoricalDataManager:
             # No price data at all for this date — can't compute anything useful
             return result
 
-        # --- Market Cap (always computable if we have price + shares) ---
-        shares = fund_data.get('sharesOutstanding')
-        if shares and current_price:
-            result['marketCap'] = shares * current_price
-
-        # --- Average Volume (60-day trailing, always computable from volume_df) ---
-        if volume_df is not None and ticker in volume_df.columns:
-            vol_series = volume_df[ticker].loc[:as_of_ts].dropna()
-            if len(vol_series) >= 20:
-                result['averageVolume'] = float(vol_series.tail(60).mean())
-
-        # --- Quarterly Income: get reports BEFORE as_of_date ---
+        # --- Quarterly reports: parse BEFORE market cap so we can use PIT shares ---
+        # Quarterly Income: get reports BEFORE as_of_date
         # NOTE: yfinance typically provides only ~3 years of quarterly data.
         # For backtest dates older than that, these lists will be empty and
         # the quarterly-dependent metrics (ROE, margins, etc.) will NOT be
@@ -575,10 +571,9 @@ class HistoricalDataManager:
                     qi_reports.append(r)
             except Exception:
                 pass
-        # Sort by date descending (most recent first)
         qi_reports.sort(key=lambda x: x['date'], reverse=True)
 
-        # --- Quarterly Balance Sheet: get reports BEFORE as_of_date ---
+        # Quarterly Balance Sheet: get reports BEFORE as_of_date
         qb_reports = []
         for r in fund_data.get('quarterly_balance', []):
             try:
@@ -588,6 +583,28 @@ class HistoricalDataManager:
             except Exception:
                 pass
         qb_reports.sort(key=lambda x: x['date'], reverse=True)
+
+        # --- Market Cap ---
+        # Prefer historical shares outstanding from quarterly balance sheet (PIT)
+        # to avoid look-ahead bias from current-day sharesOutstanding.
+        shares = None
+        if qb_reports:
+            for qb in qb_reports:
+                s = qb.get('commonStockSharesOutstanding') or qb.get('sharesOutstanding')
+                if s and s > 0:
+                    shares = s
+                    break
+        # Fallback to current-day sharesOutstanding (documented look-ahead bias)
+        if not shares:
+            shares = fund_data.get('sharesOutstanding')
+        if shares and current_price:
+            result['marketCap'] = shares * current_price
+
+        # --- Average Volume (60-day trailing, always computable from volume_df) ---
+        if volume_df is not None and ticker in volume_df.columns:
+            vol_series = volume_df[ticker].loc[:as_of_ts].dropna()
+            if len(vol_series) >= 20:
+                result['averageVolume'] = float(vol_series.tail(60).mean())
 
         # --- TTM (Trailing Twelve Months) = sum of last 4 quarters ---
         if len(qi_reports) >= 4:
@@ -727,7 +744,10 @@ class BacktestResult:
                 'trailing YoY earnings growth ca proxy. '
                 '(3) Performanța sectoarelor și industriilor este calculată din prețurile '
                 'acțiunilor componente, nu din datele Finviz. '
-                '(4) Universul de acțiuni este limitat la ~3,000-5,000 tickere (vs. ~8,000+ pe Finviz).'
+                '(4) Universul de acțiuni este limitat la ~3,000-5,000 tickere (vs. ~8,000+ pe Finviz). '
+                '(5) Survivorship bias: universul folosește constituenții actuali ai indicilor — '
+                'companiile delistate/falimentate nu sunt incluse, ceea ce poate supraevalua randamentele. '
+                '(6) Costurile de tranzacționare sunt modelate (10-25 bps pe tranzacție în funcție de profil).'
             ),
         }
 
@@ -849,6 +869,11 @@ class BacktestEngine:
     runs the full selection pipeline at each one.
     """
     
+    # Transaction cost defaults (basis points, round-trip)
+    # Conservative/Balanced: 10 bps (large-cap, liquid stocks)
+    # Aggressive: 25 bps (includes small-cap with higher spreads/impact)
+    DEFAULT_COST_BPS = {'conservative': 10, 'balanced': 10, 'aggressive': 25}
+
     def __init__(
         self,
         start_date,
@@ -857,6 +882,7 @@ class BacktestEngine:
         initial_capital=10000.0,
         rebalance_months=3,
         progress_callback=None,
+        transaction_cost_bps=None,
     ):
         """
         Args:
@@ -866,6 +892,8 @@ class BacktestEngine:
             initial_capital: starting capital in USD
             rebalance_months: months between rebalances (3 = quarterly)
             progress_callback: function(message, percent) for progress updates
+            transaction_cost_bps: round-trip transaction cost in basis points
+                                  (default: 10 bps for conservative/balanced, 25 bps for aggressive)
         """
         self.start_date = pd.Timestamp(start_date)
         self.end_date = pd.Timestamp(end_date)
@@ -873,7 +901,13 @@ class BacktestEngine:
         self.initial_capital = initial_capital
         self.rebalance_months = rebalance_months
         self.progress_callback = progress_callback or (lambda msg, pct: None)
-        
+
+        # Transaction costs
+        if transaction_cost_bps is not None:
+            self.transaction_cost_bps = transaction_cost_bps
+        else:
+            self.transaction_cost_bps = self.DEFAULT_COST_BPS.get(profile_type, 10)
+
         self.data_manager = HistoricalDataManager(
             progress_callback=self.progress_callback
         )
@@ -1190,12 +1224,37 @@ class BacktestEngine:
                 
                 if new_allocations:
                     # Rebalance: sell everything, buy new allocations
+                    # Apply transaction costs based on turnover
+                    old_holdings_value = {}
+                    for t, s in holdings.items():
+                        if t in price_df.columns:
+                            ps = price_df[t].loc[:day].dropna()
+                            if not ps.empty:
+                                old_holdings_value[t] = s * ps.iloc[-1]
+
+                    # Calculate turnover (fraction of portfolio traded)
+                    old_weights = {}
+                    if portfolio_value > 0 and old_holdings_value:
+                        old_weights = {t: v / portfolio_value for t, v in old_holdings_value.items()}
+
+                    turnover = 0.0
+                    all_tickers = set(list(old_weights.keys()) + list(new_allocations.keys()))
+                    for t in all_tickers:
+                        old_w = old_weights.get(t, 0)
+                        new_w = new_allocations.get(t, 0)
+                        turnover += abs(new_w - old_w)
+                    turnover = min(turnover, 2.0)  # Cap at 200% (full sell + full buy)
+
+                    # Apply transaction costs: cost = turnover * portfolio_value * cost_bps
+                    tx_cost = turnover * portfolio_value * (self.transaction_cost_bps / 10000.0)
+                    portfolio_value -= tx_cost
+
                     holdings = {}
                     purchase_prices = {}
                     peak_prices = {}
                     stopped_out = {}  # Ciclu 5: clear stopped-out list to prevent cash drag
                     cash = 0
-                    
+
                     for ticker, weight in new_allocations.items():
                         if ticker in price_df.columns:
                             price_series = price_df[ticker].loc[:day].dropna()
@@ -1208,7 +1267,7 @@ class BacktestEngine:
                                     # B1/B2: Record purchase price and initial peak
                                     purchase_prices[ticker] = price
                                     peak_prices[ticker] = price
-                    
+
                     # Safety: if some tickers had no price data, the unallocated
                     # portion was lost (cash=0 but not all portfolio_value spent).
                     # Recalculate what's actually in holdings and fix cash.
@@ -1283,6 +1342,7 @@ class BacktestEngine:
         # Compute metrics
         self._report("Se calculează metricile de performanță...", 92)
         metrics = PerformanceTracker.compute_metrics(equity_curve, benchmark_curve)
+        metrics['transaction_cost_bps'] = self.transaction_cost_bps
         
         self._report("Backtest finalizat!", 100)
         

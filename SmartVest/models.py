@@ -62,6 +62,80 @@ class WatchedUnicorn(models.Model):
         return f"{self.ticker} - {self.user.username}"
 
 
+class Notification(models.Model):
+    class Type(models.TextChoices):
+        PRICE_ALERT = 'price_alert', 'Price Alert'
+        PORTFOLIO_ALERT = 'portfolio_alert', 'Portfolio Alert'
+        UNICORN_FOUND = 'unicorn_found', 'New Unicorn Found'
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
+    notification_type = models.CharField(max_length=20, choices=Type.choices)
+    title = models.CharField(max_length=200)
+    message = models.TextField()
+    link = models.CharField(max_length=200, blank=True)
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'is_read', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.notification_type}: {self.title}"
+
+
+class NotificationPreference(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='notification_prefs')
+
+    # Per-type toggles
+    price_alerts_enabled = models.BooleanField(default=True)
+    portfolio_alerts_enabled = models.BooleanField(default=True)
+    unicorn_alerts_enabled = models.BooleanField(default=True)
+
+    # Per-channel toggles
+    in_app_enabled = models.BooleanField(default=True)
+    email_enabled = models.BooleanField(default=False)
+    push_enabled = models.BooleanField(default=False)
+
+    # Thresholds
+    price_change_threshold = models.DecimalField(
+        max_digits=5, decimal_places=2, default=5.00,
+        help_text="Daily price change % to trigger alert"
+    )
+    portfolio_drawdown_threshold = models.DecimalField(
+        max_digits=5, decimal_places=2, default=10.00,
+        help_text="Portfolio loss % to trigger drawdown warning"
+    )
+
+    class Meta:
+        verbose_name_plural = "Notification preferences"
+
+    def __str__(self):
+        return f"Notification prefs for {self.user.username}"
+
+
+class PriceAlert(models.Model):
+    class Direction(models.TextChoices):
+        ABOVE = 'above', 'Price rises above'
+        BELOW = 'below', 'Price drops below'
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='price_alerts')
+    ticker = models.CharField(max_length=10)
+    target_price = models.DecimalField(max_digits=10, decimal_places=2)
+    direction = models.CharField(max_length=5, choices=Direction.choices)
+    is_triggered = models.BooleanField(default=False)
+    triggered_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.ticker} {self.direction} ${self.target_price}"
+
+
 class BacktestRun(models.Model):
     """Stores the result of a single automated backtest run."""
     STATUS_CHOICES = [

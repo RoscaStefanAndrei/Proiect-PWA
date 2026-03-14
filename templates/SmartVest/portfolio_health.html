@@ -1,0 +1,320 @@
+{% extends 'base.html' %}
+
+{% block title %}Health Check — {{ portfolio.name }}{% endblock %}
+{% block header_title %}Portfolio Health Check{% endblock %}
+
+{% block content %}
+<style>
+    .health-loading {
+        text-align: center;
+        padding: 3rem 1rem;
+    }
+    .health-loading i {
+        color: var(--accent);
+        font-size: 2.5rem;
+        margin-bottom: 1rem;
+    }
+    .health-status-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 14px;
+        padding: 1.25rem;
+        margin-bottom: 1rem;
+    }
+    .health-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.3rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.82rem;
+        font-weight: 600;
+    }
+    .severity-badge {
+        display: inline-block;
+        padding: 0.15rem 0.5rem;
+        border-radius: 6px;
+        font-size: 0.72rem;
+        font-weight: 600;
+    }
+    .underperformer-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 14px;
+        padding: 1rem 1.25rem;
+        margin-bottom: 0.75rem;
+    }
+    .underperformer-card .reason-tag {
+        display: inline-block;
+        font-size: 0.76rem;
+        margin-right: 0.5rem;
+        margin-bottom: 0.25rem;
+    }
+    .replacement-table {
+        width: 100%;
+        font-size: 0.8rem;
+        border-collapse: collapse;
+    }
+    .replacement-table th {
+        color: var(--text-muted);
+        font-weight: 600;
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        padding: 0.5rem 0.5rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .replacement-table td {
+        padding: 0.5rem 0.5rem;
+        color: var(--text-primary);
+        border-bottom: 1px solid var(--border-color);
+    }
+    .replacement-table tr:last-child td {
+        border-bottom: none;
+    }
+    .metric-row {
+        display: flex;
+        gap: 1.5rem;
+        flex-wrap: wrap;
+        margin-top: 0.5rem;
+    }
+    .metric-item {
+        display: flex;
+        flex-direction: column;
+    }
+    .metric-item .label {
+        font-size: 0.7rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+    }
+    .metric-item .value {
+        font-size: 0.95rem;
+        font-weight: 600;
+    }
+    .all-clear-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 14px;
+        padding: 2.5rem 1rem;
+        text-align: center;
+    }
+</style>
+
+<div class="d-flex align-items-center gap-2 mb-3">
+    <a href="{% url 'portfolio-detail' portfolio.pk %}" class="btn btn-outline-light rounded-pill px-3" style="font-size:0.85rem;">
+        <i class="fas fa-arrow-left me-1"></i>Back
+    </a>
+    <h5 class="mb-0" style="color: var(--text-primary);">{{ portfolio.name }}</h5>
+</div>
+
+<!-- Loading -->
+<div id="healthLoading" class="health-loading">
+    <div><i class="fas fa-heartbeat fa-pulse"></i></div>
+    <h5 style="color: var(--text-primary);">Analyzing portfolio health...</h5>
+    <p style="color: var(--text-muted); font-size: 0.85rem;">
+        Screening replacement candidates via Finviz and covariance analysis.<br>
+        This may take 20-30 seconds.
+    </p>
+</div>
+
+<!-- Error -->
+<div id="healthError" style="display:none" class="all-clear-card">
+    <i class="fas fa-exclamation-triangle fa-2x mb-2" style="color: var(--yellow);"></i>
+    <h5 style="color: var(--text-primary);">Analysis Failed</h5>
+    <p style="color: var(--text-muted); margin: 0;">Could not complete the health check. Please try again later.</p>
+</div>
+
+<!-- Results -->
+<div id="healthResults" style="display:none"></div>
+
+<script>
+const portfolioId = {{ portfolio.pk }};
+
+fetch(`/api/portfolios/${portfolioId}/health/`)
+    .then(r => {
+        if (!r.ok) throw new Error('Failed');
+        return r.json();
+    })
+    .then(data => {
+        document.getElementById('healthLoading').style.display = 'none';
+        document.getElementById('healthResults').style.display = '';
+        renderResults(data);
+    })
+    .catch(() => {
+        document.getElementById('healthLoading').style.display = 'none';
+        document.getElementById('healthError').style.display = '';
+    });
+
+function renderResults(data) {
+    const container = document.getElementById('healthResults');
+    let html = '';
+
+    // Status config
+    const cfg = {
+        good:      { icon: 'fa-check-circle',        color: 'var(--green)',  label: 'Healthy',                bg: 'rgba(16,185,129,0.12)' },
+        attention: { icon: 'fa-exclamation-circle',   color: 'var(--yellow)', label: 'Needs Attention',        bg: 'rgba(245,158,11,0.12)' },
+        rebalance: { icon: 'fa-exclamation-triangle', color: 'var(--red)',    label: 'Rebalance Recommended',  bg: 'rgba(239,68,68,0.12)' },
+    };
+    const s = cfg[data.health] || cfg.attention;
+
+    // Health status card
+    html += `
+    <div class="health-status-card" style="border-left: 4px solid ${s.color};">
+        <div class="d-flex align-items-center gap-3 mb-2">
+            <div style="width:44px;height:44px;border-radius:50%;background:${s.bg};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <i class="fas ${s.icon}" style="color:${s.color};font-size:1.2rem;"></i>
+            </div>
+            <div>
+                <span class="health-badge" style="background:${s.bg};color:${s.color};">${s.label}</span>
+                <div style="color:var(--text-secondary);font-size:0.85rem;margin-top:0.25rem;">${data.summary}</div>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-item">
+                <span class="label">Portfolio Avg</span>
+                <span class="value ${data.avg_return >= 0 ? 'positive' : 'negative'}">${data.avg_return >= 0 ? '+' : ''}${data.avg_return}%</span>
+            </div>
+            <div class="metric-item">
+                <span class="label">SPY (same period)</span>
+                <span class="value ${data.spy_return >= 0 ? 'positive' : 'negative'}">${data.spy_return >= 0 ? '+' : ''}${data.spy_return}%</span>
+            </div>
+            <div class="metric-item">
+                <span class="label">Holdings</span>
+                <span class="value" style="color:var(--text-primary);">${data.holdings_count}</span>
+            </div>
+        </div>
+    </div>`;
+
+    // Good health
+    if (data.health === 'good') {
+        html += `
+        <div class="all-clear-card">
+            <i class="fas fa-shield-alt fa-3x mb-3" style="color:var(--green);opacity:0.6;"></i>
+            <h5 style="color:var(--text-primary);">All Clear</h5>
+            <p style="color:var(--text-muted);margin:0;font-size:0.88rem;">
+                No underperforming stocks detected. Your portfolio looks healthy.
+            </p>
+        </div>`;
+    } else {
+        // Section header
+        html += `<h6 class="mb-2 mt-3" style="color:var(--text-primary);"><i class="fas fa-chart-line me-1" style="color:var(--red);"></i>Underperforming Holdings</h6>`;
+
+        // Severity config
+        const sev = {
+            mild:     { color: 'var(--yellow)', bg: 'rgba(245,158,11,0.15)', label: 'Mild' },
+            moderate: { color: '#f97316',       bg: 'rgba(249,115,22,0.15)', label: 'Moderate' },
+            severe:   { color: 'var(--red)',     bg: 'rgba(239,68,68,0.15)',  label: 'Severe' },
+        };
+
+        data.underperformers.forEach(u => {
+            const sv = sev[u.severity] || sev.mild;
+
+            html += `
+            <div class="underperformer-card">
+                <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-1">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="fw-bold" style="color:var(--accent);font-size:1.05rem;">${u.ticker}</span>
+                        <span class="severity-badge" style="background:${sv.bg};color:${sv.color};">${sv.label}</span>
+                        ${u.sector ? `<span style="color:var(--text-muted);font-size:0.78rem;">${u.sector}</span>` : ''}
+                    </div>
+                    <span class="fw-bold negative" style="font-size:1rem;">${u.return_pct > 0 ? '+' : ''}${u.return_pct}%</span>
+                </div>
+
+                <div class="d-flex gap-3 mb-2 flex-wrap" style="font-size:0.82rem;">
+                    <span style="color:var(--text-muted);">Entry: <strong style="color:var(--text-primary);">$${u.avg_price.toFixed(2)}</strong></span>
+                    <span style="color:var(--text-muted);">Current: <strong style="color:var(--text-primary);">$${u.current_price.toFixed(2)}</strong></span>
+                    <span style="color:var(--text-muted);">Weight: <strong style="color:var(--text-primary);">${u.weight.toFixed(1)}%</strong></span>
+                </div>
+
+                <div class="mb-3">
+                    ${u.reasons.map(r => `<span class="reason-tag" style="color:${sv.color};"><i class="fas fa-exclamation-circle me-1"></i>${r}</span>`).join('')}
+                </div>`;
+
+            // Replacement suggestions
+            if (u.replacements && u.replacements.length > 0) {
+                html += `
+                <div style="border-top:1px solid var(--border-color);padding-top:0.75rem;">
+                    <div class="fw-bold mb-2" style="font-size:0.8rem;color:var(--text-secondary);">
+                        <i class="fas fa-exchange-alt me-1"></i>Suggested Replacements
+                    </div>
+                    <div class="table-responsive">
+                        <table class="replacement-table">
+                            <thead>
+                                <tr>
+                                    <th>Ticker</th>
+                                    <th>Company</th>
+                                    <th>Sector</th>
+                                    <th class="text-end">3M Momentum</th>
+                                    <th class="text-end">Correlation</th>
+                                    <th class="text-end">Diversification</th>
+                                </tr>
+                            </thead>
+                            <tbody>`;
+
+                u.replacements.forEach(r => {
+                    html += `
+                                <tr>
+                                    <td class="fw-bold" style="color:var(--accent);">${r.ticker}</td>
+                                    <td>${r.company}</td>
+                                    <td style="color:var(--text-muted);">${r.sector}</td>
+                                    <td class="text-end positive">+${r.momentum}%</td>
+                                    <td class="text-end" style="color:var(--text-secondary);">${r.correlation.toFixed(2)}</td>
+                                    <td class="text-end" style="color:${r.diversification >= 0.5 ? 'var(--green)' : 'var(--text-secondary)'};">${(r.diversification * 100).toFixed(0)}%</td>
+                                </tr>`;
+                });
+
+                html += `
+                            </tbody>
+                        </table>
+                    </div>
+                </div>`;
+            } else {
+                html += `
+                <div style="border-top:1px solid var(--border-color);padding-top:0.75rem;">
+                    <p style="color:var(--text-muted);font-size:0.82rem;margin:0;">
+                        <i class="fas fa-info-circle me-1"></i>No replacement candidates found matching current filters.
+                    </p>
+                </div>`;
+            }
+
+            html += '</div>';
+        });
+    }
+
+    // Action buttons
+    html += `
+    <div class="d-flex gap-2 mt-3 mb-4">
+        <button onclick="refreshHealthCheck()" class="btn btn-outline-light rounded-pill px-3" style="font-size:0.85rem;">
+            <i class="fas fa-sync-alt me-1"></i>Refresh
+        </button>
+        <a href="{% url 'select-portfolio-type' %}" class="btn rounded-pill px-3" style="font-size:0.85rem;background:var(--accent);color:#fff;">
+            <i class="fas fa-chart-line me-1"></i>Run New Analysis
+        </a>
+    </div>`;
+
+    container.innerHTML = html;
+}
+
+function refreshHealthCheck() {
+    document.getElementById('healthResults').style.display = 'none';
+    document.getElementById('healthError').style.display = 'none';
+    document.getElementById('healthLoading').style.display = '';
+
+    fetch(`/api/portfolios/${portfolioId}/health/?refresh=1`)
+        .then(r => {
+            if (!r.ok) throw new Error('Failed');
+            return r.json();
+        })
+        .then(data => {
+            document.getElementById('healthLoading').style.display = 'none';
+            document.getElementById('healthResults').style.display = '';
+            renderResults(data);
+        })
+        .catch(() => {
+            document.getElementById('healthLoading').style.display = 'none';
+            document.getElementById('healthError').style.display = '';
+        });
+}
+</script>
+{% endblock %}

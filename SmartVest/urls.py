@@ -15,6 +15,8 @@ urlpatterns = [
     path('analysis/save/', views.save_portfolio, name='save-portfolio'),
     path('portfolios/<int:pk>/delete/', views.PortfolioDeleteView.as_view(), name='portfolio-delete'),
     path('portfolios/<int:pk>/rename/', views.rename_portfolio, name='portfolio-rename'),
+    path('portfolios/<int:pk>/health/', views.portfolio_health, name='portfolio-health'),
+    path('api/portfolios/<int:pk>/health/', views.portfolio_health_api, name='portfolio-health-api'),
     path('portfolios/<int:pk>/', views.PortfolioDetailView.as_view(), name='portfolio-detail'),
     path('analysis/performance/', views.track_performance, name='track-performance'),
     path('news/', views.market_news, name='market-news'),
@@ -22,6 +24,7 @@ urlpatterns = [
     path('custom-admin/user/<int:user_id>/', views.admin_user_detail, name='admin-user-detail'),
 
     # Algorithm
+    
     path('analysis/', views.run_analysis, name='run-analysis'),
     path('analysis/select/', views.select_portfolio_type, name='select-portfolio-type'),
     path('analysis/status/', views.analysis_status, name='analysis-status'),
@@ -37,9 +40,17 @@ urlpatterns = [
     
     # Unicorn Scanner
     path('unicorns/', views.unicorn_scanner, name='unicorn-scanner'),
+    path('unicorns/watchlist/', views.unicorn_watchlist, name='unicorn-watchlist'),
     path('unicorns/watch/<str:ticker>/', views.add_to_watchlist, name='add-to-watchlist'),
     path('unicorns/unwatch/<int:pk>/', views.remove_from_watchlist, name='remove-from-watchlist'),
     
+    # Notifications
+    path('api/notifications/', views.notifications_list, name='notifications-list'),
+    path('api/notifications/read/', views.notifications_mark_read, name='notifications-mark-read'),
+    path('api/notifications/read/<int:pk>/', views.notification_mark_read, name='notification-mark-read'),
+    path('api/notifications/scan/', views.run_alert_scan, name='run-alert-scan'),
+    path('notifications/preferences/', views.notification_preferences, name='notification-preferences'),
+
     # Backtesting (Admin Only)
     path('backtest/', views.backtest_view, name='backtest'),
     path('backtest/progress/', views.backtest_progress_api, name='backtest-progress'),

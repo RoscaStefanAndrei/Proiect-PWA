@@ -8,3 +8,5 @@ finvizfinance==1.2.0
 matplotlib==3.9.2
 Pillow>=10.0
 Faker==40.1.2
+huey==2.6.0
+redis==7.3.0

@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "SmartVest",
+    "huey.contrib.djhuey",
 ]
 
 MIDDLEWARE = [
@@ -73,6 +74,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "SmartVest.context_processors.notification_context",
             ],
         },
     },
@@ -185,12 +187,41 @@ LOGGING = {
 # ============================================================================
 # CACHES (used for thread-safe state management)
 # ============================================================================
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'smartvest-cache',
+REDIS_URL = os.environ.get('REDIS_URL', '')
+
+if REDIS_URL:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': REDIS_URL,
+        }
     }
-}
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'smartvest-cache',
+        }
+    }
+
+# ============================================================================
+# HUEY TASK QUEUE
+# ============================================================================
+if REDIS_URL:
+    HUEY = {
+        'huey_class': 'huey.RedisHuey',
+        'name': 'smartvest',
+        'url': REDIS_URL,
+        'immediate': False,
+    }
+else:
+    # Local dev without Redis: tasks run immediately (synchronous)
+    HUEY = {
+        'huey_class': 'huey.SqliteHuey',
+        'name': 'smartvest',
+        'filename': str(BASE_DIR / 'huey.db'),
+        'immediate': DEBUG,  # Run tasks inline during development
+    }
 
 # Production security settings (active when DEBUG=False)
 if not DEBUG:

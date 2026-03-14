@@ -1,0 +1,152 @@
+{% extends 'base.html' %}
+{% block title %}Notification Settings{% endblock %}
+{% block header_title %}Notification Settings{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <form method="POST">
+            {% csrf_token %}
+
+            <!-- Alert Types -->
+            <div class="card mb-4">
+                <div class="card-body p-4">
+                    <h6 class="fw-bold mb-3" style="color: var(--text-primary);">
+                        <i class="fas fa-bell me-2" style="color: var(--accent);"></i>Alert Types
+                    </h6>
+                    <p style="color: var(--text-muted); font-size: 0.85rem;" class="mb-3">
+                        Choose which events trigger notifications.
+                    </p>
+
+                    <div class="d-flex flex-column gap-3">
+                        <label class="d-flex align-items-center gap-3 p-3 rounded-3" style="background: var(--bg-input); cursor: pointer;">
+                            <input type="checkbox" name="price_alerts_enabled" class="form-check-input m-0"
+                                {% if form.instance.price_alerts_enabled %}checked{% endif %}>
+                            <div>
+                                <span class="fw-bold d-block" style="color: var(--text-primary);">
+                                    <i class="fas fa-chart-line me-1" style="color: var(--yellow);"></i>Price Alerts
+                                </span>
+                                <small style="color: var(--text-muted);">
+                                    Watchlist stocks hit a target price or move significantly
+                                </small>
+                            </div>
+                        </label>
+
+                        <label class="d-flex align-items-center gap-3 p-3 rounded-3" style="background: var(--bg-input); cursor: pointer;">
+                            <input type="checkbox" name="portfolio_alerts_enabled" class="form-check-input m-0"
+                                {% if form.instance.portfolio_alerts_enabled %}checked{% endif %}>
+                            <div>
+                                <span class="fw-bold d-block" style="color: var(--text-primary);">
+                                    <i class="fas fa-briefcase me-1" style="color: var(--accent);"></i>Portfolio Alerts
+                                </span>
+                                <small style="color: var(--text-muted);">
+                                    Portfolio drawdown or significant gain warnings
+                                </small>
+                            </div>
+                        </label>
+
+                        <label class="d-flex align-items-center gap-3 p-3 rounded-3" style="background: var(--bg-input); cursor: pointer;">
+                            <input type="checkbox" name="unicorn_alerts_enabled" class="form-check-input m-0"
+                                {% if form.instance.unicorn_alerts_enabled %}checked{% endif %}>
+                            <div>
+                                <span class="fw-bold d-block" style="color: var(--text-primary);">
+                                    <i class="fas fa-horse-head me-1" style="color: var(--green);"></i>New Unicorn Found
+                                </span>
+                                <small style="color: var(--text-muted);">
+                                    Daily scan discovers new 3/3 unicorn candidates
+                                </small>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Delivery Channels -->
+            <div class="card mb-4">
+                <div class="card-body p-4">
+                    <h6 class="fw-bold mb-3" style="color: var(--text-primary);">
+                        <i class="fas fa-paper-plane me-2" style="color: var(--accent);"></i>Delivery Channels
+                    </h6>
+                    <p style="color: var(--text-muted); font-size: 0.85rem;" class="mb-3">
+                        How you want to receive notifications.
+                    </p>
+
+                    <div class="d-flex flex-column gap-3">
+                        <label class="d-flex align-items-center gap-3 p-3 rounded-3" style="background: var(--bg-input); cursor: pointer;">
+                            <input type="checkbox" name="in_app_enabled" class="form-check-input m-0"
+                                {% if form.instance.in_app_enabled %}checked{% endif %}>
+                            <div>
+                                <span class="fw-bold d-block" style="color: var(--text-primary);">
+                                    <i class="fas fa-bell me-1"></i>In-App Notifications
+                                </span>
+                                <small style="color: var(--text-muted);">Bell icon badge inside SmartVest</small>
+                            </div>
+                        </label>
+
+                        <label class="d-flex align-items-center gap-3 p-3 rounded-3" style="background: var(--bg-input); cursor: pointer;">
+                            <input type="checkbox" name="email_enabled" class="form-check-input m-0"
+                                {% if form.instance.email_enabled %}checked{% endif %}>
+                            <div>
+                                <span class="fw-bold d-block" style="color: var(--text-primary);">
+                                    <i class="fas fa-envelope me-1"></i>Email
+                                </span>
+                                <small style="color: var(--text-muted);">Receive alerts at {{ user.email }}</small>
+                            </div>
+                        </label>
+
+                        <label class="d-flex align-items-center gap-3 p-3 rounded-3" style="background: var(--bg-input); cursor: pointer;">
+                            <input type="checkbox" name="push_enabled" class="form-check-input m-0"
+                                {% if form.instance.push_enabled %}checked{% endif %}>
+                            <div>
+                                <span class="fw-bold d-block" style="color: var(--text-primary);">
+                                    <i class="fas fa-mobile-alt me-1"></i>Push Notifications
+                                </span>
+                                <small style="color: var(--text-muted);">Browser notifications even when app is closed</small>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Thresholds -->
+            <div class="card mb-4">
+                <div class="card-body p-4">
+                    <h6 class="fw-bold mb-3" style="color: var(--text-primary);">
+                        <i class="fas fa-sliders-h me-2" style="color: var(--accent);"></i>Thresholds
+                    </h6>
+
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label" style="color: var(--text-secondary); font-size: 0.85rem;">
+                                Price Change Trigger (%)
+                            </label>
+                            <input type="number" name="price_change_threshold" step="0.5" min="1" max="50"
+                                value="{{ form.instance.price_change_threshold }}"
+                                class="form-control" style="background: var(--bg-input); border-color: var(--border-color); color: var(--text-primary);">
+                            <small style="color: var(--text-muted);">Alert when daily move exceeds this %</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" style="color: var(--text-secondary); font-size: 0.85rem;">
+                                Portfolio Drawdown Warning (%)
+                            </label>
+                            <input type="number" name="portfolio_drawdown_threshold" step="1" min="1" max="50"
+                                value="{{ form.instance.portfolio_drawdown_threshold }}"
+                                class="form-control" style="background: var(--bg-input); border-color: var(--border-color); color: var(--text-primary);">
+                            <small style="color: var(--text-muted);">Alert when portfolio loss exceeds this %</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary rounded-pill px-4 fw-bold">
+                    <i class="fas fa-save me-2"></i>Save Preferences
+                </button>
+                <a href="{% url 'profile' %}" class="btn btn-outline-light rounded-pill px-3" style="font-size: 0.85rem;">
+                    <i class="fas fa-arrow-left me-1"></i>Back to Profile
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
