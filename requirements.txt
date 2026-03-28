@@ -1,6 +1,6 @@
 Django==6.0.1
 pandas==2.3.3
-numpy==1.26.4
+numpy>=2.2.6
 yfinance==0.2.66
 pandas-ta==0.4.71b0
 pyportfolioopt==1.5.6
