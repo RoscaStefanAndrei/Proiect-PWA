@@ -1,0 +1,190 @@
+{% extends 'base.html' %}
+{% load socialaccount %}
+{% block title %}Sign Up{% endblock %}
+{% block anon_nav %}{% endblock %}
+{% block content_wrapper_class %}p-0{% endblock %}
+
+{% block content %}
+<style>
+    .auth-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 16px;
+        padding: 2rem;
+    }
+    .auth-input {
+        background: var(--bg-input);
+        border: 1px solid var(--border-color);
+        color: var(--text-primary);
+        border-radius: 10px;
+        padding: 0.65rem 0.85rem;
+        font-size: 0.9rem;
+        width: 100%;
+        transition: border-color 0.2s;
+    }
+    .auth-input:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+    }
+    .auth-input::placeholder { color: var(--text-muted); }
+    .auth-label {
+        display: block;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+        margin-bottom: 0.35rem;
+    }
+    .auth-divider {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin: 1.25rem 0;
+        color: var(--text-muted);
+        font-size: 0.78rem;
+    }
+    .auth-divider::before, .auth-divider::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: var(--border-color);
+    }
+    .social-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.6rem;
+        width: 100%;
+        padding: 0.6rem;
+        border-radius: 10px;
+        font-size: 0.88rem;
+        font-weight: 600;
+        text-decoration: none;
+        transition: all 0.2s;
+        cursor: pointer;
+        border: 1px solid var(--border-color);
+    }
+    .social-btn-google { background: #ffffff; color: #3c4043; }
+    .social-btn-google:hover { background: #f8f9fa; color: #3c4043; }
+    .social-btn-apple { background: #000000; color: #ffffff; }
+    .social-btn-apple:hover { background: #1a1a1a; color: #ffffff; }
+    .auth-error {
+        font-size: 0.8rem;
+        color: var(--red);
+        margin-top: 0.25rem;
+    }
+    .auth-error-box {
+        background: rgba(239,68,68,0.1);
+        border: 1px solid rgba(239,68,68,0.25);
+        border-radius: 10px;
+        padding: 0.65rem 0.85rem;
+        margin-bottom: 1rem;
+        font-size: 0.82rem;
+        color: var(--red);
+    }
+    .password-hint {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        margin-top: 0.25rem;
+    }
+</style>
+
+<div style="display:flex; justify-content:center; align-items:center; min-height:100vh; padding:1rem;">
+    <div style="width:100%; max-width:420px;">
+        <div class="text-center mb-4">
+            <div class="logo-icon d-inline-flex mb-3" style="width:48px;height:48px;border-radius:14px;font-size:1.25rem;">
+                <i class="fas fa-chart-line"></i>
+            </div>
+            <h3 class="fw-bold" style="color: var(--text-primary);">Join SmartVest</h3>
+            <p style="color: var(--text-secondary); font-size: 0.9rem;">Create your account to start investing smarter</p>
+        </div>
+
+        <div class="auth-card">
+            <!-- Social Signup -->
+            {% get_providers as socialaccount_providers %}
+            {% if socialaccount_providers %}
+            <div class="d-flex flex-column gap-2 mb-0">
+                {% for provider in socialaccount_providers %}
+                    {% if provider.id == 'google' %}
+                    <a href="{% provider_login_url 'google' process='login' %}" class="social-btn social-btn-google">
+                        <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+                        Sign up with Google
+                    </a>
+                    {% elif provider.id == 'apple' %}
+                    <a href="{% provider_login_url 'apple' process='login' %}" class="social-btn social-btn-apple">
+                        <i class="fab fa-apple" style="font-size:1.1rem;"></i>
+                        Sign up with Apple
+                    </a>
+                    {% endif %}
+                {% endfor %}
+            </div>
+            <div class="auth-divider">or sign up with email</div>
+            {% endif %}
+
+            <!-- Signup Form -->
+            <form method="POST" action="{% url 'account_signup' %}">
+                {% csrf_token %}
+
+                {% if form.non_field_errors %}
+                <div class="auth-error-box">
+                    {% for error in form.non_field_errors %}
+                    <div>{{ error }}</div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <div class="mb-3">
+                    <label class="auth-label" for="id_username">Username</label>
+                    <input type="text" name="username" id="id_username" class="auth-input"
+                           placeholder="Choose a username" value="{{ form.username.value|default:'' }}" autofocus>
+                    {% if form.username.errors %}
+                    <div class="auth-error">{{ form.username.errors.0 }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="mb-3">
+                    <label class="auth-label" for="id_email">Email</label>
+                    <input type="email" name="email" id="id_email" class="auth-input"
+                           placeholder="you@example.com" value="{{ form.email.value|default:'' }}">
+                    {% if form.email.errors %}
+                    <div class="auth-error">{{ form.email.errors.0 }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="mb-3">
+                    <label class="auth-label" for="id_password1">Password</label>
+                    <input type="password" name="password1" id="id_password1" class="auth-input"
+                           placeholder="Create a password">
+                    {% if form.password1.errors %}
+                    <div class="auth-error">{{ form.password1.errors.0 }}</div>
+                    {% endif %}
+                    <div class="password-hint">At least 8 characters</div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="auth-label" for="id_password2">Confirm Password</label>
+                    <input type="password" name="password2" id="id_password2" class="auth-input"
+                           placeholder="Repeat your password">
+                    {% if form.password2.errors %}
+                    <div class="auth-error">{{ form.password2.errors.0 }}</div>
+                    {% endif %}
+                </div>
+
+                {% if redirect_field_value %}
+                <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}">
+                {% endif %}
+
+                <div class="d-grid mt-1">
+                    <button class="btn btn-primary rounded-pill fw-bold py-2" type="submit">Create Account</button>
+                </div>
+            </form>
+
+            <div class="mt-3 text-center">
+                <small style="color: var(--text-muted);">Already have an account?
+                    <a href="{% url 'account_login' %}" class="text-decoration-none fw-bold" style="color: var(--accent);">Sign In</a>
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

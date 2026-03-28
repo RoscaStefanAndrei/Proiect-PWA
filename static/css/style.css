@@ -38,7 +38,7 @@
     --bg-secondary: #ffffff;
     --bg-card: #ffffff;
     --bg-card-hover: #f8fafc;
-    --bg-sidebar: #1e293b;
+    --bg-sidebar: #ffffff;
     --bg-input: #f1f5f9;
     --border-color: #e2e8f0;
     --border-hover: rgba(59, 130, 246, 0.4);
@@ -921,23 +921,48 @@ p > input, p > select {
 }
 
 /* ---------- LIGHT THEME SIDEBAR OVERRIDES ---------- */
-/* Sidebar always stays dark for professional look */
 [data-theme="light"] #sidebar-wrapper {
-    background-color: #1e293b !important;
+    background-color: var(--bg-sidebar) !important;
+    border-right: 1px solid var(--border-color);
+}
+
+[data-theme="light"] .sidebar-heading .logo-text {
+    color: var(--text-primary);
 }
 
 [data-theme="light"] .sidebar-link {
-    color: rgba(255,255,255,0.6);
+    color: var(--text-secondary);
 }
 
 [data-theme="light"] .sidebar-link:hover {
-    background-color: rgba(255,255,255,0.08);
-    color: #fff;
+    background-color: rgba(59, 130, 246, 0.06);
+    color: var(--text-primary);
 }
 
 [data-theme="light"] .sidebar-link.active {
-    background-color: rgba(59,130,246,0.15);
-    color: #60a5fa;
+    background-color: rgba(59, 130, 246, 0.1);
+    color: #2563eb;
+}
+
+[data-theme="light"] .sidebar-section-label {
+    color: var(--text-muted);
+}
+
+[data-theme="light"] .sidebar-bottom {
+    border-top: 1px solid var(--border-color);
+}
+
+[data-theme="light"] .theme-toggle {
+    color: var(--text-secondary);
+}
+
+[data-theme="light"] .theme-toggle:hover {
+    background-color: rgba(59, 130, 246, 0.06);
+    color: var(--text-primary);
+}
+
+[data-theme="light"] .sidebar-link.text-danger {
+    color: var(--red) !important;
 }
 
 /* Light theme table adjustments */

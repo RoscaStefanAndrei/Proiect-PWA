@@ -95,13 +95,13 @@
                         </label>
 
                         <label class="d-flex align-items-center gap-3 p-3 rounded-3" style="background: var(--bg-input); cursor: pointer;">
-                            <input type="checkbox" name="push_enabled" class="form-check-input m-0"
+                            <input type="checkbox" name="push_enabled" id="pushToggle" class="form-check-input m-0"
                                 {% if form.instance.push_enabled %}checked{% endif %}>
                             <div>
                                 <span class="fw-bold d-block" style="color: var(--text-primary);">
                                     <i class="fas fa-mobile-alt me-1"></i>Push Notifications
                                 </span>
-                                <small style="color: var(--text-muted);">Browser notifications even when app is closed</small>
+                                <small id="pushStatus" style="color: var(--text-muted);">Browser notifications even when app is closed</small>
                             </div>
                         </label>
                     </div>
@@ -149,4 +149,116 @@
         </form>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    const VAPID_PUBLIC_KEY = '{{ vapid_public_key }}';
+    const pushToggle = document.getElementById('pushToggle');
+    const pushStatus = document.getElementById('pushStatus');
+    const csrfToken = '{{ csrf_token }}';
+
+    if (!VAPID_PUBLIC_KEY || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+        if (!VAPID_PUBLIC_KEY) {
+            pushStatus.textContent = 'Push not configured on this server.';
+        } else {
+            pushStatus.textContent = 'Push not supported in this browser.';
+        }
+        pushToggle.disabled = true;
+        pushToggle.checked = false;
+        return;
+    }
+
+    pushToggle.addEventListener('change', async function() {
+        if (this.checked) {
+            await subscribePush();
+        } else {
+            await unsubscribePush();
+        }
+    });
+
+    async function subscribePush() {
+        try {
+            const perm = await Notification.requestPermission();
+            if (perm !== 'granted') {
+                pushToggle.checked = false;
+                pushStatus.textContent = 'Permission denied. Allow notifications in browser settings.';
+                pushStatus.style.color = 'var(--red)';
+                return;
+            }
+
+            const reg = await navigator.serviceWorker.ready;
+            const sub = await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+            });
+
+            const resp = await fetch('/api/push/subscribe/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken,
+                },
+                body: JSON.stringify(sub.toJSON()),
+            });
+
+            if (resp.ok) {
+                pushStatus.textContent = 'Push notifications enabled for this browser.';
+                pushStatus.style.color = 'var(--green)';
+            } else {
+                throw new Error('Server error');
+            }
+        } catch (err) {
+            console.error('Push subscribe failed:', err);
+            pushToggle.checked = false;
+            pushStatus.textContent = 'Failed to enable push notifications.';
+            pushStatus.style.color = 'var(--red)';
+        }
+    }
+
+    async function unsubscribePush() {
+        try {
+            const reg = await navigator.serviceWorker.ready;
+            const sub = await reg.pushManager.getSubscription();
+            if (sub) {
+                await fetch('/api/push/unsubscribe/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken,
+                    },
+                    body: JSON.stringify({ endpoint: sub.endpoint }),
+                });
+                await sub.unsubscribe();
+            }
+            pushStatus.textContent = 'Push notifications disabled.';
+            pushStatus.style.color = 'var(--text-muted)';
+        } catch (err) {
+            console.error('Push unsubscribe failed:', err);
+        }
+    }
+
+    function urlBase64ToUint8Array(base64String) {
+        const padding = '='.repeat((4 - base64String.length % 4) % 4);
+        const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+        const raw = atob(base64);
+        const arr = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+        return arr;
+    }
+
+    // Check existing subscription on page load
+    (async function() {
+        try {
+            const reg = await navigator.serviceWorker.ready;
+            const sub = await reg.pushManager.getSubscription();
+            if (sub && pushToggle.checked) {
+                pushStatus.textContent = 'Push notifications active on this browser.';
+                pushStatus.style.color = 'var(--green)';
+            }
+        } catch (e) { /* ignore */ }
+    })();
+})();
+</script>
 {% endblock %}

@@ -28,6 +28,9 @@ venv.bak/
 .vscode/
 .idea/
 
+# Collected static files
+staticfiles/
+
 # Database and generated files
 db.sqlite3
 sectoare_cache.csv

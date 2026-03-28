@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+{% block title %}Confirm Identity{% endblock %}
+{% block anon_nav %}{% endblock %}
+{% block content_wrapper_class %}p-0{% endblock %}
+
+{% block content %}
+<style>
+    .auth-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; padding: 2rem; }
+    .auth-input { background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 10px; padding: 0.65rem 0.85rem; font-size: 1.2rem; width: 100%; text-align: center; letter-spacing: 0.3em; transition: border-color 0.2s; }
+    .auth-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }
+    .auth-input::placeholder { color: var(--text-muted); letter-spacing: normal; }
+    .auth-label { display: block; font-size: 0.82rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.35rem; }
+    .auth-error { font-size: 0.8rem; color: var(--red); margin-top: 0.25rem; }
+</style>
+
+<div style="display:flex; justify-content:center; align-items:center; min-height:100vh; padding:1rem;">
+    <div style="width:100%; max-width:420px;">
+        <div class="text-center mb-4">
+            <div class="logo-icon d-inline-flex mb-3" style="width:48px;height:48px;border-radius:14px;font-size:1.25rem;">
+                <i class="fas fa-lock"></i>
+            </div>
+            <h3 class="fw-bold" style="color: var(--text-primary);">Confirm Identity</h3>
+            <p style="color: var(--text-secondary); font-size: 0.9rem;">Enter your authenticator code to continue</p>
+        </div>
+        <div class="auth-card">
+            <form method="POST" action="{% url 'mfa_reauthenticate' %}">
+                {% csrf_token %}
+
+                {% if form.non_field_errors %}
+                <div style="background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.25); border-radius: 10px; padding: 0.65rem 0.85rem; margin-bottom: 1rem; font-size: 0.82rem; color: var(--red);">
+                    {% for error in form.non_field_errors %}
+                    <div>{{ error }}</div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <div class="mb-3">
+                    <label class="auth-label" for="id_code">Authentication Code</label>
+                    <input type="text" name="code" id="id_code" class="auth-input"
+                           placeholder="000000" maxlength="6" autocomplete="one-time-code"
+                           inputmode="numeric" pattern="[0-9]*" autofocus>
+                    {% if form.code.errors %}
+                    <div class="auth-error">{{ form.code.errors.0 }}</div>
+                    {% endif %}
+                </div>
+
+                {{ redirect_field }}
+
+                <div class="d-grid">
+                    <button class="btn btn-primary rounded-pill fw-bold py-2" type="submit">Confirm</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

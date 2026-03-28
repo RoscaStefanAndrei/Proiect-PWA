@@ -1,13 +1,10 @@
 from django.urls import path, include
-from django.contrib.auth import views as auth_views
 from . import views
 
 urlpatterns = [
     path('', views.home, name='home'),
-    path('register/', views.register, name='register'),
+    path('accounts/', include('allauth.urls')),
     path('profile/', views.profile, name='profile'),
-    path('login/', auth_views.LoginView.as_view(template_name='SmartVest/login.html'), name='login'),
-    path('logout/', auth_views.LogoutView.as_view(template_name='SmartVest/logout.html'), name='logout'),
     path('profile/delete/', views.delete_profile, name='delete-profile'),
     
     # Saved Portfolios
@@ -50,6 +47,10 @@ urlpatterns = [
     path('api/notifications/read/<int:pk>/', views.notification_mark_read, name='notification-mark-read'),
     path('api/notifications/scan/', views.run_alert_scan, name='run-alert-scan'),
     path('notifications/preferences/', views.notification_preferences, name='notification-preferences'),
+
+    # Push subscriptions
+    path('api/push/subscribe/', views.push_subscribe, name='push-subscribe'),
+    path('api/push/unsubscribe/', views.push_unsubscribe, name='push-unsubscribe'),
 
     # Backtesting (Admin Only)
     path('backtest/', views.backtest_view, name='backtest'),

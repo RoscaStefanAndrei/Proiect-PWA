@@ -10,3 +10,12 @@ Pillow>=10.0
 Faker==40.1.2
 huey==2.6.0
 redis==7.3.0
+resend==2.7.0
+pywebpush==2.3.0
+django-allauth==65.15.0
+django-csp==4.0
+fido2==2.1.1
+gunicorn==23.0.0
+whitenoise==6.8.2
+dj-database-url==2.3.0
+psycopg2-binary==2.9.10

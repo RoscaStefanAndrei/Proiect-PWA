@@ -82,6 +82,25 @@
             </div>
         </div>
 
+        <!-- Security (2FA) -->
+        <div class="card mb-4" style="background: var(--bg-card); border-color: var(--border-color);">
+            <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="fw-bold" style="color: var(--text-primary);">
+                            <i class="fas fa-shield-alt me-2" style="color: var(--accent);"></i>Two-Factor Authentication
+                        </h6>
+                        <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0;">
+                            Add an extra layer of security with an authenticator app.
+                        </p>
+                    </div>
+                    <a href="{% url 'mfa_index' %}" class="btn btn-outline-primary rounded-pill fw-bold">
+                        <i class="fas fa-lock me-1"></i>Manage
+                    </a>
+                </div>
+            </div>
+        </div>
+
         <!-- Danger Zone -->
         <div class="card" style="border-color: rgba(239,68,68,0.2);">
             <div class="card-body p-4">

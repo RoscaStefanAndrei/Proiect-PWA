@@ -16,9 +16,12 @@ Tier 1 improvements applied:
 import datetime
 import json
 import logging
+import math
 import os
+import re
 import subprocess
 import sys
+import tempfile
 import threading
 
 import pandas as pd
@@ -50,6 +53,7 @@ from .models import (
     Notification,
     NotificationPreference,
     PriceAlert,
+    PushSubscription,
     SavedPortfolio,
     UserProfile,
     WatchedUnicorn,
@@ -334,6 +338,9 @@ def _validate_budget(value, default=10000.0):
     """Validate and sanitize budget input."""
     try:
         budget = float(value)
+        if math.isnan(budget) or math.isinf(budget):
+            logger.warning("Invalid budget value (nan/inf): %s, defaulting to %.2f", value, default)
+            return default
         if budget < MIN_BUDGET:
             logger.warning("Budget too low: %.2f, setting to minimum %.2f", budget, MIN_BUDGET)
             return MIN_BUDGET
@@ -347,10 +354,13 @@ def _validate_budget(value, default=10000.0):
 
 
 def _sanitize_name(value, max_length=MAX_PORTFOLIO_NAME_LENGTH):
-    """Sanitize a name input - strip whitespace, enforce length."""
+    """Sanitize a name input - strip whitespace, remove control chars, enforce length."""
     if not value:
         return ''
-    return str(value).strip()[:max_length]
+    cleaned = str(value).strip()
+    # Remove control characters and null bytes
+    cleaned = re.sub(r'[\x00-\x1f\x7f]', '', cleaned)
+    return cleaned[:max_length]
 
 
 # ============================================================================
@@ -387,20 +397,8 @@ def home(request):
 
 
 def register(request):
-    """User registration view."""
-    if request.method == 'POST':
-        form = UserRegisterForm(request.POST)
-        if form.is_valid():
-            user = form.save()
-            UserProfile.objects.create(user=user)
-            NotificationPreference.objects.create(user=user)
-            username = form.cleaned_data.get('username')
-            logger.info("New user registered: %s", username)
-            messages.success(request, f'Account created for {username}! You can now login.')
-            return redirect('login')
-    else:
-        form = UserRegisterForm()
-    return render(request, 'SmartVest/register.html', {'form': form})
+    """Legacy register view — redirects to allauth signup."""
+    return redirect('account_signup')
 
 
 @login_required
@@ -436,7 +434,7 @@ def delete_profile(request):
         logger.info("User account deleted: %s", username)
         user.delete()
         messages.success(request, f'The profile "{username}" has been successfully deleted.')
-        return redirect('login')
+        return redirect('account_login')
 
     return render(request, 'SmartVest/profile_confirm_delete.html')
 
@@ -531,9 +529,12 @@ def _run_algo_script(profile_type='balanced', budget=10000.0):
             "--profile", str(profile_type),
             "--budget", str(budget),
         ]
+        env = os.environ.copy()
+        env["PYTHONIOENCODING"] = "utf-8"
         result = subprocess.run(
             command, cwd=str(settings.BASE_DIR),
             capture_output=True, text=True, timeout=600,  # 10 min timeout
+            encoding='utf-8', env=env,
         )
         if result.returncode != 0:
             logger.error("Algorithm failed (exit %d): %s", result.returncode, result.stderr[:500])
@@ -551,43 +552,50 @@ def _run_algo_script_custom(filters_dict, budget=10000.0):
     """Run algorithm with custom filters in background thread."""
     _set_algo_running(True)
     logger.info("Starting algorithm with custom filters, budget=%.2f", budget)
+    temp_fd = None
+    temp_filters_path = None
     try:
         script_path = os.path.join(settings.BASE_DIR, 'selection_algorithm.py')
         if not os.path.isfile(script_path):
             logger.error("Selection algorithm script not found: %s", script_path)
             return
 
-        # Save filters to temp file to avoid shell escaping issues
-        temp_filters_path = os.path.join(settings.BASE_DIR, 'temp_custom_filters.json')
-        with open(temp_filters_path, 'w', encoding='utf-8') as f:
+        # Save filters to a unique temp file (prevents race conditions)
+        temp_fd, temp_filters_path = tempfile.mkstemp(
+            suffix='.json', prefix='smartvest_filters_', dir=str(settings.BASE_DIR)
+        )
+        with os.fdopen(temp_fd, 'w', encoding='utf-8') as f:
             json.dump(filters_dict, f)
+        temp_fd = None  # Closed by os.fdopen
 
         command = [
             sys.executable, script_path,
             "--custom-filters-file", temp_filters_path,
             "--budget", str(budget),
         ]
+        env = os.environ.copy()
+        env["PYTHONIOENCODING"] = "utf-8"
         result = subprocess.run(
             command, cwd=str(settings.BASE_DIR),
             capture_output=True, text=True, timeout=600,
+            encoding='utf-8', env=env,
         )
         if result.returncode != 0:
             logger.error("Custom algorithm failed (exit %d): %s", result.returncode, result.stderr[:500])
         else:
             logger.info("Custom algorithm completed successfully.")
 
-        # Cleanup temp file
-        try:
-            if os.path.exists(temp_filters_path):
-                os.remove(temp_filters_path)
-        except OSError:
-            pass
-
     except subprocess.TimeoutExpired:
         logger.error("Custom algorithm timed out after 600 seconds.")
     except Exception:
         logger.exception("Custom algorithm execution error")
     finally:
+        # Cleanup temp file
+        if temp_filters_path:
+            try:
+                os.remove(temp_filters_path)
+            except OSError:
+                pass
         _set_algo_running(False)
 
 
@@ -732,12 +740,53 @@ def track_performance(request):
 GNEWS_CACHE_KEY = "smartvest_gnews"
 GNEWS_CACHE_TTL = 600  # 10 minutes — news doesn't change that fast
 
+# Mapping of common tickers to their full company names for better news search
+TICKER_TO_COMPANY = {
+    'AAPL': 'Apple', 'MSFT': 'Microsoft', 'GOOGL': 'Google', 'GOOG': 'Google',
+    'AMZN': 'Amazon', 'META': 'Meta', 'TSLA': 'Tesla', 'NVDA': 'Nvidia',
+    'NFLX': 'Netflix', 'AMD': 'AMD', 'INTC': 'Intel', 'CRM': 'Salesforce',
+    'ORCL': 'Oracle', 'ADBE': 'Adobe', 'PYPL': 'PayPal', 'DIS': 'Disney',
+    'BA': 'Boeing', 'JPM': 'JPMorgan', 'V': 'Visa', 'MA': 'Mastercard',
+    'WMT': 'Walmart', 'JNJ': 'Johnson & Johnson', 'PG': 'Procter & Gamble',
+    'UNH': 'UnitedHealth', 'HD': 'Home Depot', 'KO': 'Coca-Cola',
+    'PEP': 'PepsiCo', 'MRK': 'Merck', 'ABBV': 'AbbVie', 'AVGO': 'Broadcom',
+    'COST': 'Costco', 'TMO': 'Thermo Fisher', 'MCD': "McDonald's",
+    'ACN': 'Accenture', 'LIN': 'Linde', 'CSCO': 'Cisco', 'TXN': 'Texas Instruments',
+    'QCOM': 'Qualcomm', 'IBM': 'IBM', 'GE': 'General Electric', 'CAT': 'Caterpillar',
+    'UBER': 'Uber', 'COIN': 'Coinbase', 'SQ': 'Block', 'SHOP': 'Shopify',
+    'SNAP': 'Snap', 'PLTR': 'Palantir', 'RIVN': 'Rivian', 'LCID': 'Lucid',
+    'F': 'Ford', 'GM': 'General Motors', 'T': 'AT&T', 'VZ': 'Verizon',
+    'XOM': 'Exxon Mobil', 'CVX': 'Chevron', 'COP': 'ConocoPhillips',
+}
 
-@login_required
-def market_news(request):
-    """Display business/finance news feed (cached for 10 min)."""
+
+def _get_user_tickers(user):
+    """Extract unique tickers from all of a user's saved portfolios."""
+    tickers = set()
+    for portfolio in SavedPortfolio.objects.filter(user=user):
+        data = portfolio.portfolio_data
+        if isinstance(data, list):
+            for holding in data:
+                ticker = holding.get('Ticker') or holding.get('ticker')
+                if ticker:
+                    tickers.add(ticker.upper())
+    return tickers
+
+
+NEWS_PER_PAGE = 10
+
+
+def _clean_article(article):
+    """Strip leading/trailing whitespace from article text fields."""
+    for key in ('title', 'description'):
+        if key in article and isinstance(article[key], str):
+            article[key] = article[key].strip()
+    return article
+
+
+def _fetch_general_news():
+    """Fetch general business news (cached)."""
     news_results = cache.get(GNEWS_CACHE_KEY)
-
     if news_results is None:
         news_results = []
         try:
@@ -745,7 +794,7 @@ def market_news(request):
             google_news = GNews(language='en', country='US', period='1d', max_results=10)
             raw_news = google_news.get_news_by_topic('BUSINESS')
             news_results = [
-                {k.replace(' ', '_'): v for k, v in article.items()}
+                _clean_article({k.replace(' ', '_'): v for k, v in article.items()})
                 for article in raw_news
             ]
             cache.set(GNEWS_CACHE_KEY, news_results, timeout=GNEWS_CACHE_TTL)
@@ -754,8 +803,121 @@ def market_news(request):
             logger.exception("Error fetching market news")
     else:
         logger.debug("GNews cache HIT (%d articles)", len(news_results))
+    return news_results
 
-    return render(request, 'SmartVest/market_news.html', {'news': news_results})
+
+def _fetch_focused_news(tickers):
+    """Fetch news for user's portfolio tickers using batched queries.
+
+    Groups tickers into small batches and builds OR-queries so we make
+    only a handful of GNews calls instead of one per ticker.
+    """
+    from gnews import GNews
+
+    cache_key = "smartvest_gnews_focused_" + "_".join(sorted(tickers))
+    cached = cache.get(cache_key)
+    if cached is not None:
+        logger.debug("Focused news cache HIT (%d articles)", len(cached))
+        return cached
+
+    # Build search terms: prefer company name, fall back to ticker
+    search_names = []
+    ticker_lookup = {}  # lowercase search term -> ticker
+    for t in tickers:
+        name = TICKER_TO_COMPANY.get(t, t)
+        search_names.append(name)
+        ticker_lookup[name.lower()] = t
+
+    # Batch into groups of 5 joined with OR for a single query
+    BATCH_SIZE = 5
+    batches = [
+        search_names[i:i + BATCH_SIZE]
+        for i in range(0, len(search_names), BATCH_SIZE)
+    ]
+
+    all_articles = []
+    seen_titles = set()
+
+    for batch in batches:
+        query = " OR ".join(f'"{name}"' for name in batch)
+        try:
+            google_news = GNews(language='en', country='US', period='1d', max_results=20)
+            raw = google_news.get_news(query)
+            for a in raw:
+                article = _clean_article({k.replace(' ', '_'): v for k, v in a.items()})
+                title = article.get('title', '')
+                if title in seen_titles:
+                    continue
+                seen_titles.add(title)
+                # Tag with matched ticker
+                text = (title + ' ' + (article.get('description') or '')).lower()
+                for name, ticker in ticker_lookup.items():
+                    if name in text or ticker.lower() in text:
+                        article['matched_ticker'] = ticker
+                        break
+                all_articles.append(article)
+            logger.info("GNews focused batch %r: fetched %d articles", query[:60], len(raw))
+        except Exception:
+            logger.exception("Error fetching focused news batch")
+
+    cache.set(cache_key, all_articles, timeout=GNEWS_CACHE_TTL)
+    return all_articles
+
+
+def _sort_news_by_portfolio(news_results, tickers):
+    """Sort news so articles mentioning portfolio tickers appear first."""
+    if not tickers:
+        return news_results
+
+    search_terms = {}
+    for ticker in tickers:
+        company = TICKER_TO_COMPANY.get(ticker)
+        search_terms[ticker] = [ticker]
+        if company:
+            search_terms[ticker].append(company.lower())
+
+    def relevance_score(article):
+        text = (
+            (article.get('title') or '') + ' ' + (article.get('description') or '')
+        ).lower()
+        score = 0
+        for ticker, terms in search_terms.items():
+            for term in terms:
+                if term.lower() in text:
+                    score += 1
+                    break
+        return score
+
+    return sorted(news_results, key=relevance_score, reverse=True)
+
+
+@login_required
+def market_news(request):
+    """Display business/finance news feed with optional focused view and pagination."""
+    from django.core.paginator import Paginator
+
+    focused = request.GET.get('focused') == '1'
+    user_tickers = _get_user_tickers(request.user)
+
+    if focused and user_tickers:
+        news_results = _fetch_focused_news(user_tickers)
+    else:
+        news_results = _fetch_general_news()
+        news_results = _sort_news_by_portfolio(news_results, user_tickers)
+
+    logger.info("News: %d total articles, paginating %d per page",
+                len(news_results), NEWS_PER_PAGE)
+    paginator = Paginator(news_results, NEWS_PER_PAGE)
+    page_number = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_number)
+    logger.info("News: page %s of %d, showing %d articles",
+                page_obj.number, paginator.num_pages, len(page_obj))
+
+    return render(request, 'SmartVest/market_news.html', {
+        'news': page_obj,
+        'focused': focused,
+        'has_portfolios': bool(user_tickers),
+    })
 
 
 # ============================================================================
@@ -1670,3 +1832,53 @@ def portfolio_health_api(request, pk):
     from .rebalance import portfolio_health_check
     results = portfolio_health_check(portfolio)
     return JsonResponse(results)
+
+
+# ============================================================================
+# PUSH SUBSCRIPTIONS
+# ============================================================================
+
+@login_required
+@require_POST
+def push_subscribe(request):
+    """Save a browser push subscription for the current user."""
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+    endpoint = data.get('endpoint', '')
+    keys = data.get('keys', {})
+    p256dh = keys.get('p256dh', '')
+    auth = keys.get('auth', '')
+
+    if not endpoint or not p256dh or not auth:
+        return JsonResponse({'error': 'Missing subscription fields'}, status=400)
+
+    # Validate endpoint is a proper HTTPS URL
+    if not endpoint.startswith('https://'):
+        return JsonResponse({'error': 'Invalid push endpoint'}, status=400)
+
+    PushSubscription.objects.update_or_create(
+        endpoint=endpoint,
+        defaults={
+            'user': request.user,
+            'p256dh': p256dh,
+            'auth': auth,
+        },
+    )
+    return JsonResponse({'success': True})
+
+
+@login_required
+@require_POST
+def push_unsubscribe(request):
+    """Remove a browser push subscription."""
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+    endpoint = data.get('endpoint', '')
+    PushSubscription.objects.filter(endpoint=endpoint, user=request.user).delete()
+    return JsonResponse({'success': True})

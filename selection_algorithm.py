@@ -1390,9 +1390,17 @@ if __name__ == "__main__":
 
     if args.custom_filters_file:
         try:
-            with open(args.custom_filters_file, 'r', encoding='utf-8') as f:
-                filtre_curente = json.load(f)
-            print(f"Using CUSTOM FILTERS from file: {args.custom_filters_file}")
+            # Validate that the filters file is within the project directory
+            import pathlib
+            filters_path = pathlib.Path(args.custom_filters_file).resolve()
+            project_dir = pathlib.Path(__file__).resolve().parent
+            if not str(filters_path).startswith(str(project_dir)):
+                print(f"Error: custom filters file must be within project directory.")
+                filtre_curente = None
+            else:
+                with open(filters_path, 'r', encoding='utf-8') as f:
+                    filtre_curente = json.load(f)
+                print(f"Using CUSTOM FILTERS from file: {filters_path}")
         except Exception as e:
             print(f"Error reading custom filters file: {e}. Falling back to profile.")
 

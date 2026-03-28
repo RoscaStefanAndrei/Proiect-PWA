@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 _CACHE_KEY_PREFIX = "sv_px_"          # per-ticker cache key prefix
 _CACHE_TTL_MARKET_OPEN = 120          # 2 min during market hours
 _CACHE_TTL_MARKET_CLOSED = 1800       # 30 min outside market hours
+_CACHE_TTL_FAILURE = 30               # 30 sec for failed fetches (retry quickly)
 _BATCH_DOWNLOAD_KEY = "sv_batch_ts"   # tracks last batch download time
 _BATCH_COOLDOWN = 60                  # min seconds between batch downloads
 _INFO_CACHE_PREFIX = "sv_info_"       # per-ticker info cache (sector/industry)
@@ -120,7 +121,7 @@ def fetch_prices_cached(tickers, period="5d"):
             except Exception:
                 current_prices[ticker] = 0.0
                 prev_closes[ticker] = 0.0
-                cache.set(_ticker_cache_key(ticker), (0.0, 0.0), timeout=ttl)
+                cache.set(_ticker_cache_key(ticker), (0.0, 0.0), timeout=_CACHE_TTL_FAILURE)
         else:
             for ticker in ticker_list:
                 try:
@@ -133,14 +134,15 @@ def fetch_prices_cached(tickers, period="5d"):
                 except Exception:
                     current_prices[ticker] = 0.0
                     prev_closes[ticker] = 0.0
-                    cache.set(_ticker_cache_key(ticker), (0.0, 0.0), timeout=ttl)
+                    cache.set(_ticker_cache_key(ticker), (0.0, 0.0), timeout=_CACHE_TTL_FAILURE)
 
     except Exception as e:
         logger.error("yfinance download error: %s", e)
-        # Fill missing with zeros so pages don't break
+        # Fill missing with zeros (short cache) so pages don't break
         for t in missing:
             current_prices.setdefault(t, 0.0)
             prev_closes.setdefault(t, 0.0)
+            cache.set(_ticker_cache_key(t), (0.0, 0.0), timeout=_CACHE_TTL_FAILURE)
 
     return current_prices, prev_closes
 

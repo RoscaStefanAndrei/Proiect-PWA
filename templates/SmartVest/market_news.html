@@ -6,11 +6,31 @@
 {% block content %}
 <div class="row">
     <div class="col-12">
+        {% if has_portfolios %}
+        <div class="d-flex align-items-center mb-3">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="focusedToggle"
+                       {% if focused %}checked{% endif %}>
+                <label class="form-check-label fw-semibold" for="focusedToggle"
+                       style="color: var(--text-primary); cursor: pointer;">
+                    Focused News
+                </label>
+            </div>
+            <small class="ms-2" style="color: var(--text-muted);">
+                {% if focused %}
+                    Showing news about your portfolio stocks (last 24h)
+                {% else %}
+                    Your portfolio stocks are shown first
+                {% endif %}
+            </small>
+        </div>
+        {% endif %}
+
         {% if news %}
         {% for article in news %}
         <a href="{{ article.url }}" target="_blank" class="news-item d-block mb-3 text-decoration-none">
-            <div class="d-flex w-100 justify-content-between align-items-start mb-2">
-                <h6 class="news-title mb-0 me-3">{{ article.title }}</h6>
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <h6 class="news-title mb-0 me-3" style="padding: 0; margin: 0; text-indent: 0;">{% if article.matched_ticker %}<span class="badge me-2" style="background: var(--accent-primary); font-size: 0.7rem; vertical-align: middle;">{{ article.matched_ticker }}</span>{% endif %}{{ article.title }}</h6>
                 <small style="color: var(--text-muted); white-space: nowrap;">{{ article.published_date }}</small>
             </div>
             <p style="color: var(--text-secondary); font-size: 0.88rem; margin-bottom: 0.5rem;">
@@ -19,15 +39,69 @@
             <span class="news-source"><i class="fas fa-external-link-alt me-1"></i>{{ article.publisher.title }}</span>
         </a>
         {% endfor %}
+
+        {% if news.has_other_pages %}
+        <nav aria-label="News pagination" class="mt-4">
+            <ul class="pagination justify-content-center">
+                {% if news.has_previous %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ news.previous_page_number }}{% if focused %}&focused=1{% endif %}">
+                        <i class="fas fa-chevron-left"></i>
+                    </a>
+                </li>
+                {% endif %}
+
+                {% for num in news.paginator.page_range %}
+                <li class="page-item {% if news.number == num %}active{% endif %}">
+                    <a class="page-link" href="?page={{ num }}{% if focused %}&focused=1{% endif %}">{{ num }}</a>
+                </li>
+                {% endfor %}
+
+                {% if news.has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ news.next_page_number }}{% if focused %}&focused=1{% endif %}">
+                        <i class="fas fa-chevron-right"></i>
+                    </a>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
+
         {% else %}
         <div class="empty-state">
             <div class="empty-state-icon">
                 <i class="fas fa-newspaper"></i>
             </div>
+            {% if focused %}
+            <h4 class="fw-bold mb-2" style="color: var(--text-primary);">No Portfolio News Found</h4>
+            <p style="color: var(--text-secondary);">No recent news about your portfolio stocks. Try disabling Focused News to see general market news.</p>
+            {% else %}
             <h4 class="fw-bold mb-2" style="color: var(--text-primary);">No News Available</h4>
             <p style="color: var(--text-secondary);">Could not fetch the latest news. Try again later.</p>
+            {% endif %}
         </div>
         {% endif %}
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const toggle = document.getElementById('focusedToggle');
+    if (toggle) {
+        toggle.addEventListener('change', function() {
+            const url = new URL(window.location);
+            if (this.checked) {
+                url.searchParams.set('focused', '1');
+            } else {
+                url.searchParams.delete('focused');
+            }
+            url.searchParams.delete('page');
+            window.location.href = url.toString();
+        });
+    }
+});
+</script>
 {% endblock %}

@@ -4,6 +4,7 @@ from .models import (
     Notification,
     NotificationPreference,
     PriceAlert,
+    PushSubscription,
     SavedPortfolio,
     UserProfile,
 )
@@ -14,3 +15,4 @@ admin.site.register(AnalysisHistory)
 admin.site.register(Notification)
 admin.site.register(NotificationPreference)
 admin.site.register(PriceAlert)
+admin.site.register(PushSubscription)

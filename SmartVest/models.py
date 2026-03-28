@@ -116,6 +116,21 @@ class NotificationPreference(models.Model):
         return f"Notification prefs for {self.user.username}"
 
 
+class PushSubscription(models.Model):
+    """Browser push subscription (one per device per user)."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='push_subscriptions')
+    endpoint = models.TextField(unique=True)
+    p256dh = models.CharField(max_length=200)
+    auth = models.CharField(max_length=100)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Push sub for {self.user.username}"
+
+
 class PriceAlert(models.Model):
     class Direction(models.TextChoices):
         ABOVE = 'above', 'Price rises above'

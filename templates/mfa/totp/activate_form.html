@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+{% block title %}Activate Authenticator App{% endblock %}
+
+{% block content %}
+<style>
+    .auth-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; padding: 2rem; }
+    .auth-input { background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 10px; padding: 0.65rem 0.85rem; font-size: 1.2rem; width: 100%; text-align: center; letter-spacing: 0.3em; transition: border-color 0.2s; }
+    .auth-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }
+    .auth-input::placeholder { color: var(--text-muted); letter-spacing: normal; }
+    .auth-label { display: block; font-size: 0.82rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.35rem; }
+    .auth-error { font-size: 0.8rem; color: var(--red); margin-top: 0.25rem; }
+    .auth-error-box { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.25); border-radius: 10px; padding: 0.65rem 0.85rem; margin-bottom: 1rem; font-size: 0.82rem; color: var(--red); }
+    .qr-container { background: #ffffff; border-radius: 12px; padding: 1rem; display: inline-block; margin-bottom: 1rem; }
+    .secret-key { background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 8px; padding: 0.5rem 0.75rem; font-family: monospace; font-size: 0.82rem; color: var(--text-primary); word-break: break-all; user-select: all; }
+</style>
+
+<div class="row justify-content-center" style="min-height: 60vh; align-items: center;">
+    <div class="col-md-6 col-lg-5 col-xl-4">
+        <div class="text-center mb-4">
+            <div class="logo-icon d-inline-flex mb-3" style="width:48px;height:48px;border-radius:14px;font-size:1.25rem;">
+                <i class="fas fa-qrcode"></i>
+            </div>
+            <h3 class="fw-bold" style="color: var(--text-primary);">Set Up Authenticator</h3>
+            <p style="color: var(--text-secondary); font-size: 0.9rem;">Scan the QR code with your authenticator app, then enter the verification code below</p>
+        </div>
+
+        <div class="auth-card">
+            <form method="POST" action="{% url 'mfa_activate_totp' %}">
+                {% csrf_token %}
+
+                {% if form.non_field_errors %}
+                <div class="auth-error-box">
+                    {% for error in form.non_field_errors %}
+                    <div>{{ error }}</div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <!-- QR Code -->
+                <div class="text-center mb-3">
+                    <div class="qr-container">
+                        <img src="{{ totp_svg_data_uri }}" alt="QR Code" style="width: 200px; height: 200px;">
+                    </div>
+                </div>
+
+                <!-- Secret Key -->
+                <div class="mb-3">
+                    <label class="auth-label">Secret Key (backup)</label>
+                    <div class="secret-key">{{ form.secret }}</div>
+                    <small style="color: var(--text-muted); font-size: 0.75rem;">Save this key — you can use it to restore your authenticator.</small>
+                </div>
+
+                <!-- Verification Code -->
+                <div class="mb-3">
+                    <label class="auth-label" for="id_code">Verification Code</label>
+                    <input type="text" name="code" id="id_code" class="auth-input"
+                           placeholder="000000" maxlength="6" autocomplete="one-time-code"
+                           inputmode="numeric" pattern="[0-9]*" autofocus>
+                    {% if form.code.errors %}
+                    <div class="auth-error">{{ form.code.errors.0 }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="d-grid">
+                    <button class="btn btn-primary rounded-pill fw-bold py-2" type="submit">Activate</button>
+                </div>
+            </form>
+
+            <div class="mt-3 text-center">
+                <a href="{% url 'mfa_index' %}" class="text-decoration-none fw-bold" style="color: var(--text-muted); font-size: 0.85rem;">
+                    <i class="fas fa-arrow-left me-1"></i> Back
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
