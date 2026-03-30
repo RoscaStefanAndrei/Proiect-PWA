@@ -339,7 +339,7 @@ CSRF_COOKIE_SAMESITE = 'Lax'
 CONTENT_SECURITY_POLICY = {
     "DIRECTIVES": {
         "default-src": ["'self'"],
-        "script-src": ["'self'", "https://cdn.jsdelivr.net"],
+        "script-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
         "style-src": [
             "'self'", "'unsafe-inline'",
             "https://cdn.jsdelivr.net",
