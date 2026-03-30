@@ -264,6 +264,11 @@ else:
 # ============================================================================
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'SmartVest <noreply@smartvest.app>')
+
+if RESEND_API_KEY:
+    EMAIL_BACKEND = 'SmartVest.email_backend.ResendEmailBackend'
+else:
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 SITE_DOMAIN = os.environ.get('SITE_DOMAIN', 'localhost:8000')
 
 # ============================================================================
@@ -282,7 +287,7 @@ LOGIN_REDIRECT_URL = '/'
 
 ACCOUNT_LOGIN_METHODS = {'email', 'username'}
 ACCOUNT_SIGNUP_FIELDS = ['email*', 'username*', 'password1*', 'password2*']
-ACCOUNT_EMAIL_VERIFICATION = 'none' if DEBUG else 'mandatory'
+ACCOUNT_EMAIL_VERIFICATION = 'mandatory' if RESEND_API_KEY else 'none'
 ACCOUNT_LOGIN_ON_GET = False
 ACCOUNT_LOGOUT_ON_GET = False
 ACCOUNT_ADAPTER = 'SmartVest.adapters.SmartVestAccountAdapter'
