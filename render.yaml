@@ -10,7 +10,7 @@ services:
     runtime: python
     plan: free
     buildCommand: "./build.sh"
-    startCommand: "gunicorn finance_project.wsgi:application"
+    startCommand: "gunicorn finance_project.wsgi:application --workers 1 --threads 4"
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -23,4 +23,4 @@ services:
       - key: PYTHON_VERSION
         value: "3.12.7"
       - key: WEB_CONCURRENCY
-        value: "2"
+        value: "1"
