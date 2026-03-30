@@ -28,3 +28,11 @@ except User.DoesNotExist:
 "
     fi
 fi
+
+# Mark all existing email addresses as verified (email verification is disabled)
+python -c "
+import django; django.setup()
+from allauth.account.models import EmailAddress
+n = EmailAddress.objects.filter(verified=False).update(verified=True)
+if n: print(f'Verified {n} email address(es)')
+"

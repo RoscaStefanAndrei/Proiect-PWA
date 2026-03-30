@@ -288,7 +288,7 @@ LOGIN_REDIRECT_URL = '/'
 
 ACCOUNT_LOGIN_METHODS = {'email', 'username'}
 ACCOUNT_SIGNUP_FIELDS = ['email*', 'username*', 'password1*', 'password2*']
-ACCOUNT_EMAIL_VERIFICATION = 'mandatory' if RESEND_API_KEY else 'none'
+ACCOUNT_EMAIL_VERIFICATION = 'none'
 ACCOUNT_LOGIN_ON_GET = False
 ACCOUNT_LOGOUT_ON_GET = False
 ACCOUNT_ADAPTER = 'SmartVest.adapters.SmartVestAccountAdapter'
