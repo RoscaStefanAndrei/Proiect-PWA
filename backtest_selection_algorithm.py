@@ -69,14 +69,14 @@ FILTRE_BALANCED = {
     # === 1. Descriptive ===
     "min_market_cap": 10e9,
     "min_avg_volume": 2_000_000,
-    "min_relative_volume": 1.0,           # NEW: matches "Relative Volume: Over 1"
-    "require_dividend": True,              # NEW: matches "Dividend Yield: Positive (>0%)"
+    "min_relative_volume": 1.0,
+    "require_dividend": True,
     # === 2. Fundamental ===
     "require_positive_net_margin": True,
     "require_positive_op_margin": True,
-    "min_eps_growth_5y": 0.0,              # NEW: matches "EPS growthnext 5 years: Positive"
-    "min_eps_growth_next_y": 0.0,          # NEW: matches "EPS growthnext year: Positive"
-    "min_eps_growth_this_y": 0.0,          # NEW: matches "EPS growththis year: Positive"
+    "min_eps_growth_5y": 0.0,
+    "min_eps_growth_next_y": 0.0,
+    "min_eps_growth_this_y": 0.0,
     "min_roe": 0.10,
     # === 3. Technical ===
     "price_above_sma200": True,
@@ -335,17 +335,23 @@ def filtreaza_companii_hist(tickers, sector_map, sectors, fundamentals, price_df
                 if current_price < sma200:
                     continue
 
-        # --- A3: Momentum filter — exclude stocks with negative 1M AND 3M returns ---
+        # --- A3: Momentum filter — exclude stocks underperforming SPY on BOTH 1M and 3M ---
         if ticker in df_prices.columns:
             col = df_prices[ticker].dropna()
-            if len(col) >= 63:  # ~3 months of trading days
+            if len(col) >= 63:
                 price_now = col.iloc[-1]
                 price_1m = col.iloc[-21] if len(col) >= 21 else price_now
                 price_3m = col.iloc[-63]
                 ret_1m = (price_now / price_1m) - 1 if price_1m > 0 else 0
                 ret_3m = (price_now / price_3m) - 1 if price_3m > 0 else 0
-                # Only exclude if BOTH 1M and 3M are negative (falling knife)
-                if ret_1m < 0 and ret_3m < 0:
+                # SPY benchmark for relative comparison
+                spy_ret_1m_a3, spy_ret_3m_a3 = 0, 0
+                if 'SPY' in df_prices.columns:
+                    spy_col = df_prices['SPY'].dropna()
+                    if len(spy_col) >= 63:
+                        spy_ret_1m_a3 = (spy_col.iloc[-1] / spy_col.iloc[-21]) - 1
+                        spy_ret_3m_a3 = (spy_col.iloc[-1] / spy_col.iloc[-63]) - 1
+                if ret_1m < spy_ret_1m_a3 and ret_3m < spy_ret_3m_a3:
                     continue
 
         # --- A4: Volatility filter — exclude stocks with high annualized vol ---
@@ -915,7 +921,7 @@ def run_backtest_pipeline(
         needs_rebalance = any(v > 0.30 for v in sector_totals.values())
         if needs_rebalance:
             # Iteratively cap sectors at 30% and redistribute excess
-            for _ in range(5):
+            for _ in range(10):
                 excess = 0
                 for sec, total in sector_totals.items():
                     if total > 0.30:
@@ -926,17 +932,26 @@ def run_backtest_pipeline(
                                 alocari[ticker] = old_w * scale
                                 excess += old_w - alocari[ticker]
 
-                # Redistribute excess proportionally to uncapped sectors
+                # Recalculate sector totals BEFORE distributing excess
+                sector_totals = {}
+                for ticker, weight in alocari.items():
+                    sec = sector_map.get(ticker, 'Unknown')
+                    sector_totals[sec] = sector_totals.get(sec, 0) + weight
+
+                # Redistribute excess to sectors still under cap
                 if excess > 0.001:
                     uncapped = [t for t, w in alocari.items()
-                                if sector_totals.get(sector_map.get(t, 'Unknown'), 0) <= 0.30]
+                                if sector_totals.get(sector_map.get(t, 'Unknown'), 0) < 0.30]
                     if uncapped:
                         uncapped_total = sum(alocari[t] for t in uncapped)
                         if uncapped_total > 0:
                             for t in uncapped:
-                                alocari[t] += (alocari[t] / uncapped_total) * excess
+                                sec = sector_map.get(t, 'Unknown')
+                                headroom = 0.30 - sector_totals.get(sec, 0)
+                                add = min((alocari[t] / uncapped_total) * excess, headroom)
+                                alocari[t] += add
 
-                # Recalculate sector totals
+                # Recalculate after redistribution
                 sector_totals = {}
                 for ticker, weight in alocari.items():
                     sec = sector_map.get(ticker, 'Unknown')
@@ -944,6 +959,12 @@ def run_backtest_pipeline(
 
                 if all(v <= 0.301 for v in sector_totals.values()):
                     break
+
+            # Normalize to 100% if weights leaked during capping
+            total_w = sum(alocari.values())
+            if total_w > 0 and abs(total_w - 1.0) > 0.005:
+                for t in alocari:
+                    alocari[t] /= total_w
 
             print(f"  -> B5: Sector cap aplicat. Max sector: {max(sector_totals.values()):.1%}")
 

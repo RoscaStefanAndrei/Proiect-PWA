@@ -97,90 +97,32 @@ PROFILE_FILTERS = {
 
 def get_sectoare_profitabile():
     """
-    Abordare finală (D - Merge):
-    1. Descarcă 'Ticker' și 'Sector' folosind clasa 'Overview'.
-    2. Descarcă 'Ticker' și datele de performanță folosind clasa 'Performance'.
-    3. Combină (merge) cele două seturi de date folosind 'Ticker'.
-    4. Calculează media pe sector și filtrează.
+    Obține sectoarele cu performanță pozitivă pe 6 luni și 1 an folosind
+    Finviz GroupPerformance (un singur apel rapid, fără paginare).
     """
 
-    print(
-        "Se inițiază abordarea finală (combinarea datelor 'Overview' și 'Performance')..."
-    )
+    print("Se descarcă performanța pe sectoare (GroupPerformance)...")
 
     try:
-        # --- APEL 1: Obținerea Sectoarelor ---
-        print("Pas 1/4: Se descarcă Ticker și Sector (poate dura 6-7 min)...")
-        screener_overview = Overview()
-        df_overview = screener_overview.screener_view(
-            columns=["No.", "Ticker", "Sector"]
-        )
+        client = GroupPerformance()
+        df_sectoare = client.screener_view(group="Sector")
 
-        # Păstrăm doar coloanele de care avem nevoie
-        df_overview = df_overview[["Ticker", "Sector"]]
-        if df_overview.empty or "Sector" not in df_overview.columns:
-            print("Eroare la extragerea datelor 'Overview' (Sector).")
+        if df_sectoare.empty:
+            print("Eroare: Nu s-au putut descărca datele de performanță pe sectoare.")
             return [], pd.DataFrame()
 
-        print(f"  -> Date 'Overview' extrase pentru {len(df_overview)} acțiuni.")
+        print(f"  -> {len(df_sectoare)} sectoare descărcate.")
 
-        # --- APEL 2: Obținerea Performanței ---
-        print("Pas 2/4: Se descarcă Ticker și Performanța (poate dura 6-7 min)...")
-        screener_perf = ScreenerPerformance()
-        df_performanta = screener_perf.screener_view(
-            columns=["No.", "Ticker", "Perf Half", "Perf Year"]
-        )
+        # Rename 'Name' -> 'Sector' for consistency with the rest of the pipeline
+        df_sectoare = df_sectoare.rename(columns={"Name": "Sector"})
 
-        # Păstrăm doar coloanele de care avem nevoie
-        coloane_performanta = ["Perf Half", "Perf Year"]
-        df_performanta = df_performanta[["Ticker"] + coloane_performanta]
+        # Filter: positive 6M AND positive 1Y performance
+        conditie = (df_sectoare["Perf Half"] > 0) & (df_sectoare["Perf Year"] > 0)
+        df_profitabile = df_sectoare[conditie]
 
-        if df_performanta.empty or "Perf Half" not in df_performanta.columns:
-            print("Eroare la extragerea datelor 'Performance'.")
-            return [], pd.DataFrame()
+        lista_sectoare = df_profitabile["Sector"].tolist()
 
-        print(f"  -> Date 'Performance' extrase pentru {len(df_performanta)} acțiuni.")
-
-        # --- APEL 3: Combinarea (Merge) ---
-        print("Pas 3/4: Se combină seturile de date...")
-
-        # Folosim 'inner' merge pentru a păstra doar tickerele care apar în ambele liste
-        df_combinat = pd.merge(df_overview, df_performanta, on="Ticker", how="inner")
-
-        if df_combinat.empty:
-            print(
-                "Eroare: Seturile de date nu au putut fi combinate (nu s-au găsit Tickere comune?)."
-            )
-            return [], pd.DataFrame()
-
-        print(
-            f"  -> Date combinate. Total {len(df_combinat)} acțiuni cu date complete."
-        )
-
-        # --- APEL 4: Procesarea (Curățare și Grupare) ---
-        print("Pas 4/4: Se curăță datele și se calculează media pe sector...")
-
-        # Curățarea datelor (doar pe coloanele de performanță)
-        for col in coloane_performanta:
-            df_combinat[col] = df_combinat[col].astype(str).str.replace("%", "")
-            df_combinat[col] = pd.to_numeric(df_combinat[col], errors="coerce")
-
-        df_combinat = df_combinat.dropna(subset=coloane_performanta)
-
-        # Calculăm media pe sector
-        df_performanta_sectoare = df_combinat.groupby("Sector").mean(numeric_only=True)
-
-        # Filtrarea
-        conditie_filtrare = (df_performanta_sectoare["Perf Half"] > 0) & (
-            df_performanta_sectoare["Perf Year"] > 0
-        )
-
-        df_profitabile = df_performanta_sectoare[conditie_filtrare]
-
-        # Extrage lista finală de nume
-        lista_sectoare = df_profitabile.index.tolist()
-
-        return lista_sectoare, df_profitabile.reset_index()
+        return lista_sectoare, df_profitabile[["Sector", "Perf Half", "Perf Year"]].reset_index(drop=True)
 
     except Exception as e:
         print(f"A apărut o eroare neașteptată în timpul procesării: {e}")
@@ -474,37 +416,34 @@ def filtreaza_puterea_industriei(df_companii_pasul_4):
         f"  -> Se vor verifica {len(industrii_de_verificat)} industrii unice: {industrii_de_verificat}"
     )
 
-    # 2. Obținem datele de la Finviz
+    # 2. Obținem datele de la Finviz + SPY de la yfinance
     try:
         print("  -> Se descarcă datele de performanță...")
         client_performanta = GroupPerformance()
-        df_indecsi = client_performanta.screener(group_by="Index")
-        df_toate_industriile = client_performanta.screener(group_by="Industry")
+        df_toate_industriile = client_performanta.screener_view(group="Industry")
 
-        if df_indecsi.empty or df_toate_industriile.empty:
-            print(
-                "Eroare: Nu s-au putut descărca datele (Industrii/Indecși). Se oprește Pasul 5."
-            )
+        if df_toate_industriile.empty:
+            print("Eroare: Nu s-au putut descărca datele de industrii. Se oprește Pasul 5.")
             return df_companii_pasul_4
 
     except Exception as e:
         print(f"Eroare la descărcarea datelor Finviz: {e}. Se oprește Pasul 5.")
         return df_companii_pasul_4
 
-    # 3. Procesăm performanța S&P 500
+    # 3. Calculăm performanța S&P 500 din yfinance (3M și 6M)
     try:
-        df_indecsi = curata_coloana_performanta(df_indecsi, "Perf Quarter")  # 3M
-        df_indecsi = curata_coloana_performanta(df_indecsi, "Perf Half")  # 6M
-
-        sp500_row = df_indecsi[
-            df_indecsi["Name"].str.contains("S&P 500", case=False, na=False)
-        ]
-        if sp500_row.empty:
-            print("Eroare: Nu s-a găsit 'S&P 500'. Se oprește Pasul 5.")
+        spy_data = yf.download("SPY", period="1y", progress=False)["Close"]
+        if spy_data.empty:
+            print("Eroare: Nu s-au putut descărca datele SPY. Se oprește Pasul 5.")
             return df_companii_pasul_4
 
-        perf_spy_3m = sp500_row.iloc[0]["Perf Quarter"]
-        perf_spy_6m = sp500_row.iloc[0]["Perf Half"]
+        spy_now = spy_data.iloc[-1].item()
+        # ~63 trading days = 3 months, ~126 trading days = 6 months
+        spy_3m_ago = spy_data.iloc[-min(63, len(spy_data))].item() if len(spy_data) >= 63 else spy_data.iloc[0].item()
+        spy_6m_ago = spy_data.iloc[-min(126, len(spy_data))].item() if len(spy_data) >= 126 else spy_data.iloc[0].item()
+
+        perf_spy_3m = (spy_now - spy_3m_ago) / spy_3m_ago
+        perf_spy_6m = (spy_now - spy_6m_ago) / spy_6m_ago
 
         print(f"  -> Performanța S&P 500 (3M): {perf_spy_3m:.2%}")
         print(f"  -> Performanța S&P 500 (6M): {perf_spy_6m:.2%}")
@@ -515,14 +454,8 @@ def filtreaza_puterea_industriei(df_companii_pasul_4):
 
     # 4. Procesăm și verificăm DOAR industriile noastre
     try:
-        df_toate_industriile = curata_coloana_performanta(
-            df_toate_industriile, "Perf Quarter"
-        )
-        df_toate_industriile = curata_coloana_performanta(
-            df_toate_industriile, "Perf Half"
-        )
-
-        industrii_puternice = []  # Lista industriilor care trec testul
+        # New API returns "Perf Quart" (not "Perf Quarter") and values are already floats
+        industrii_puternice = []
 
         print("  -> Se verifică fiecare industrie vs. S&P 500...")
         for industrie_nume in industrii_de_verificat:
@@ -536,7 +469,7 @@ def filtreaza_puterea_industriei(df_companii_pasul_4):
                 )
                 continue
 
-            perf_ind_3m = row_industrie.iloc[0]["Perf Quarter"]
+            perf_ind_3m = row_industrie.iloc[0]["Perf Quart"]
             perf_ind_6m = row_industrie.iloc[0]["Perf Half"]
 
             # Condiția: Trebuie să fie mai bun pe AMBELE perioade
@@ -572,19 +505,21 @@ def filtreaza_puterea_industriei(df_companii_pasul_4):
 
 def filtreaza_momentum_negativ(tickere_de_filtrat):
     """
-    A3: Exclude stocks where BOTH 1-month AND 3-month returns are negative.
-    Removes 'falling knives' — stocks in sustained decline on multiple timeframes.
+    A3: Exclude stocks underperforming SPY on BOTH 1-month AND 3-month timeframes.
+    Removes relative underperformers — stocks lagging the market on multiple horizons.
+    Uses relative (vs SPY) comparison so broad market corrections don't wipe the universe.
     """
     if not tickere_de_filtrat:
         return []
 
-    print(f"\n===== FILTRU A3: Momentum negativ ({len(tickere_de_filtrat)} tickere) =====")
+    print(f"\n===== FILTRU A3: Momentum relativ ({len(tickere_de_filtrat)} tickere) =====")
 
     end_date = datetime.date.today()
     start_date = end_date - datetime.timedelta(days=100)  # ~63 trading days
 
+    tickers_with_spy = list(tickere_de_filtrat) + ["SPY"]
     try:
-        data = yf.download(tickere_de_filtrat, start=start_date, end=end_date)["Close"]
+        data = yf.download(tickers_with_spy, start=start_date, end=end_date)["Close"]
         if data.empty:
             print("  -> Nu s-au putut descărca datele. Se păstrează toate tickerele.")
             return tickere_de_filtrat
@@ -592,13 +527,16 @@ def filtreaza_momentum_negativ(tickere_de_filtrat):
         print(f"  -> Eroare la descărcare: {e}. Se păstrează toate tickerele.")
         return tickere_de_filtrat
 
+    # Calculate SPY returns as benchmark
+    spy_col = data["SPY"].dropna()
+    spy_ret_1m = (spy_col.iloc[-1] / spy_col.iloc[-21]) - 1 if len(spy_col) >= 21 else 0
+    spy_ret_3m = (spy_col.iloc[-1] / spy_col.iloc[-63]) - 1 if len(spy_col) >= 63 else 0
+    print(f"  -> SPY benchmark: 1M={spy_ret_1m:.2%}, 3M={spy_ret_3m:.2%}")
+
     survivors = []
     for ticker in tickere_de_filtrat:
         try:
-            if len(tickere_de_filtrat) > 1:
-                col = data[ticker].dropna()
-            else:
-                col = data.dropna()
+            col = data[ticker].dropna()
 
             if len(col) < 21:
                 survivors.append(ticker)
@@ -611,8 +549,9 @@ def filtreaza_momentum_negativ(tickere_de_filtrat):
             ret_1m = (price_now / price_1m) - 1 if price_1m > 0 else 0
             ret_3m = (price_now / price_3m) - 1 if price_3m > 0 else 0
 
-            if ret_1m < 0 and ret_3m < 0:
-                print(f"  -> {ticker}: ELIMINAT (1M: {ret_1m:.2%}, 3M: {ret_3m:.2%})")
+            # Eliminate only if underperforming SPY on BOTH timeframes
+            if ret_1m < spy_ret_1m and ret_3m < spy_ret_3m:
+                print(f"  -> {ticker}: ELIMINAT (1M: {ret_1m:.2%} vs SPY {spy_ret_1m:.2%}, 3M: {ret_3m:.2%} vs SPY {spy_ret_3m:.2%})")
             else:
                 survivors.append(ticker)
         except Exception:
@@ -1211,10 +1150,10 @@ def run_full_pipeline(profile_type="balanced", budget=10000.0, filters_dict=None
     if tech_pct > 0:
         try:
             # Check bull market: SPY > SMA200
-            spy_data = yf.download("SPY", period="1y")["Close"]
+            spy_data = yf.download("SPY", period="1y", progress=False)["Close"]
             if not spy_data.empty and len(spy_data) >= 200:
-                spy_current = spy_data.iloc[-1]
-                spy_sma200 = spy_data.tail(200).mean()
+                spy_current = spy_data.iloc[-1].item()
+                spy_sma200 = spy_data.tail(200).mean().item()
 
                 if spy_current > spy_sma200:
                     print(f"\n  -> Bull market detectat (SPY > SMA200). Se aplică mega-cap tech override.")
@@ -1222,13 +1161,13 @@ def run_full_pipeline(profile_type="balanced", budget=10000.0, filters_dict=None
 
                     if megacap_tickers:
                         # Get 6M momentum for mega-cap tickers
-                        tech_price = yf.download(megacap_tickers, period="7mo")["Close"]
+                        tech_price = yf.download(megacap_tickers, period="7mo", progress=False)["Close"]
                         tech_momentum = {}
                         for ticker in megacap_tickers:
                             try:
                                 col = tech_price[ticker].dropna() if len(megacap_tickers) > 1 else tech_price.dropna()
                                 if len(col) >= 126:
-                                    tech_momentum[ticker] = (col.iloc[-1] / col.iloc[-126]) - 1
+                                    tech_momentum[ticker] = float(col.iloc[-1] / col.iloc[-126]) - 1
                             except Exception:
                                 pass
 
@@ -1275,7 +1214,8 @@ def run_full_pipeline(profile_type="balanced", budget=10000.0, filters_dict=None
 
         if any(v > 0.30 for v in sector_totals.values()):
             print(f"\n  -> Sector cap 30%: se rebalansează...")
-            for _ in range(5):
+            for _ in range(10):
+                # Scale down over-allocated sectors
                 excess = 0
                 for sec, total in sector_totals.items():
                     if total > 0.30:
@@ -1286,16 +1226,26 @@ def run_full_pipeline(profile_type="balanced", budget=10000.0, filters_dict=None
                                 alocari[ticker] = old_w * scale
                                 excess += old_w - alocari[ticker]
 
+                # Recalculate sector totals BEFORE distributing excess
+                sector_totals = {}
+                for ticker, weight in alocari.items():
+                    sec = ticker_sector.get(ticker, 'Unknown')
+                    sector_totals[sec] = sector_totals.get(sec, 0) + weight
+
+                # Distribute excess to sectors still under cap
                 if excess > 0.001:
                     uncapped = [t for t, w in alocari.items()
-                                if sector_totals.get(ticker_sector.get(t, 'Unknown'), 0) <= 0.30]
+                                if sector_totals.get(ticker_sector.get(t, 'Unknown'), 0) < 0.30]
                     if uncapped:
                         uncapped_total = sum(alocari[t] for t in uncapped)
                         if uncapped_total > 0:
                             for t in uncapped:
-                                alocari[t] += (alocari[t] / uncapped_total) * excess
+                                sec = ticker_sector.get(t, 'Unknown')
+                                headroom = 0.30 - sector_totals.get(sec, 0)
+                                add = min((alocari[t] / uncapped_total) * excess, headroom)
+                                alocari[t] += add
 
-                # Recalculate
+                # Recalculate after redistribution
                 sector_totals = {}
                 for ticker, weight in alocari.items():
                     sec = ticker_sector.get(ticker, 'Unknown')
@@ -1303,6 +1253,12 @@ def run_full_pipeline(profile_type="balanced", budget=10000.0, filters_dict=None
 
                 if all(v <= 0.301 for v in sector_totals.values()):
                     break
+
+            # Normalize to 100% if weights leaked during capping
+            total_w = sum(alocari.values())
+            if total_w > 0 and abs(total_w - 1.0) > 0.005:
+                for t in alocari:
+                    alocari[t] /= total_w
 
             print(f"  -> Sector cap aplicat. Max sector: {max(sector_totals.values()):.1%}")
 

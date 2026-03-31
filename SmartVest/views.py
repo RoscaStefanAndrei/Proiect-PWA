@@ -625,7 +625,7 @@ def run_analysis(request):
                 f"This may take a few minutes."
             )
 
-        return redirect('run-analysis')
+        return redirect('analysis-status')
 
     return render(request, 'SmartVest/run_analysis.html', {
         'running': algo_running,
@@ -642,7 +642,7 @@ def select_portfolio_type(request):
 @login_required
 def analysis_status(request):
     """Display analysis progress."""
-    return render(request, 'SmartVest/run_analysis.html', {
+    return render(request, 'SmartVest/analysis_status.html', {
         'running': _get_algo_running(),
     })
 
